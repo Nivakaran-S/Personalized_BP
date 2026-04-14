@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wmic process:*)",
+      "Bash(.venv/Scripts/python.exe main.py)",
+      "Bash(grep \"class mix\" logs/*.log)",
+      "Bash(python -c ':*)",
+      "Bash(.venv/Scripts/python.exe -c \"from app import app; print\\('app imports OK'\\)\")"
+    ]
+  }
+}

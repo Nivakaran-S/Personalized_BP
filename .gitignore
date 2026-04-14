@@ -9,4 +9,12 @@ wheels/
 # Virtual environments
 .venv
 
+# Secrets
 .env
+
+# Training-run outputs (regenerated on every container build)
+Artifacts/
+logs/
+output/
+final_model/
+prediction_output/
