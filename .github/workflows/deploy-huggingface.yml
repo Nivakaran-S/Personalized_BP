@@ -32,9 +32,10 @@ jobs:
             echo "Missing required secrets: HF_TOKEN, HF_USERNAME, HF_SPACE."
             exit 1
           fi
-          # Drop any tracked training outputs so they never reach HF (they are also in .gitignore
-          # but may linger in history from earlier commits — an orphan push sidesteps that).
+          # Drop training outputs and raw NHANES binaries. HF blocks binary files in git, so
+          # XPT files are fetched inside the Docker build instead (see Dockerfile).
           rm -rf output Artifacts logs final_model prediction_output
+          find data/nhanes -type f \( -iname '*.xpt' -o -iname '*.XPT' \) -delete 2>/dev/null || true
           git checkout --orphan hf-deploy
           git add -A
           git commit -m "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ)"
