@@ -43,6 +43,7 @@ from src.utils.ml_utils.metric.classification_metric import (
     per_class_metrics,
 )
 from src.utils.ml_utils.model.estimator import BPModel, UnsupervisedBPModel
+from src.utils.ml_utils import tracking
 
 
 def _build_supervised_models(num_classes: int = 3):
@@ -373,50 +374,61 @@ class ModelTrainer:
             class_order = C.CLASS_ORDER
             feature_names = C.NUMERIC_FEATURES + C.CATEGORICAL_FEATURES
 
-            models = _build_supervised_models(num_classes=len(class_order))
-            logging.info("Running %d-fold CV for %d supervised models.", C.CV_FOLDS, len(models))
-            cv_df = self._cross_validate(models, X_train, y_train)
-            logging.info("\n%s", cv_df.to_string(index=False))
+            with tracking.start_run(run_name="bp_training", tags={"pipeline": "bp-personalized-alert"}):
+                self._log_session_context(X_train, y_train, X_test, y_test, class_order)
 
-            fitted = self._fit_supervised(models, X_train, y_train)
-            supervised_df, metrics_map, per_class_maps = self._evaluate_supervised(
-                fitted, X_test, y_test, class_order
-            )
+                models = _build_supervised_models(num_classes=len(class_order))
+                logging.info("Running %d-fold CV for %d supervised models.", C.CV_FOLDS, len(models))
+                cv_df = self._cross_validate(models, X_train, y_train)
+                logging.info("\n%s", cv_df.to_string(index=False))
+                self._log_cv_results(cv_df)
 
-            best_name = self._select_best(cv_df)
-            best_model = fitted[best_name]
-            logging.info("Best supervised model: %s", best_name)
+                fitted = self._fit_supervised(models, X_train, y_train)
+                supervised_df, metrics_map, per_class_maps = self._evaluate_supervised(
+                    fitted, X_test, y_test, class_order
+                )
+                self._log_supervised_runs(fitted, cv_df, metrics_map, per_class_maps)
 
-            unsup = self._fit_unsupervised(X_train, y_train)
-            unsupervised_df, unsup_per_class = self._evaluate_unsupervised(
-                unsup, X_test, y_test, class_order
-            )
-            per_class_maps.update(unsup_per_class)
+                best_name = self._select_best(cv_df)
+                best_model = fitted[best_name]
+                logging.info("Best supervised model: %s", best_name)
 
-            rule_metric_dict, rule_per_class = self._evaluate_rule_baseline(X_test, y_test, class_order)
-            unsupervised_df = pd.concat(
-                [unsupervised_df, pd.DataFrame([{"model": "SecondReadingRules", **rule_metric_dict}])],
-                ignore_index=True,
-            )
+                unsup = self._fit_unsupervised(X_train, y_train)
+                unsupervised_df, unsup_per_class = self._evaluate_unsupervised(
+                    unsup, X_test, y_test, class_order
+                )
+                per_class_maps.update(unsup_per_class)
 
-            # Train set metrics for the best model
-            y_train_pred = best_model.predict(X_train)
-            y_train_prob = (
-                best_model.predict_proba(X_train) if hasattr(best_model, "predict_proba") else None
-            )
-            train_metric = get_multiclass_score(y_train, y_train_pred, y_train_prob)
-            test_metric = metrics_map[best_name]
+                rule_metric_dict, rule_per_class = self._evaluate_rule_baseline(X_test, y_test, class_order)
+                unsupervised_df = pd.concat(
+                    [unsupervised_df, pd.DataFrame([{"model": "SecondReadingRules", **rule_metric_dict}])],
+                    ignore_index=True,
+                )
+                self._log_unsupervised_runs(unsup, unsupervised_df, unsup_per_class, rule_per_class, rule_metric_dict)
 
-            preprocessor = load_object(self.data_transformation_artifact.preprocessor_file_path)
-            with open(self.data_transformation_artifact.feature_metadata_file_path) as f:
-                feature_metadata = json.load(f)
-            feature_metadata["best_model_name"] = best_name
+                y_train_pred = best_model.predict(X_train)
+                y_train_prob = (
+                    best_model.predict_proba(X_train) if hasattr(best_model, "predict_proba") else None
+                )
+                train_metric = get_multiclass_score(y_train, y_train_pred, y_train_prob)
+                test_metric = metrics_map[best_name]
 
-            fi_df = self._feature_importance(best_model, feature_names, X_train, y_train)
-            supervised_csv, unsupervised_csv, cv_csv = self._save_outputs(
-                best_name, best_model, preprocessor, unsup, feature_metadata,
-                cv_df, supervised_df, unsupervised_df, per_class_maps, rule_per_class, fi_df,
-            )
+                preprocessor = load_object(self.data_transformation_artifact.preprocessor_file_path)
+                with open(self.data_transformation_artifact.feature_metadata_file_path) as f:
+                    feature_metadata = json.load(f)
+                feature_metadata["best_model_name"] = best_name
+
+                fi_df = self._feature_importance(best_model, feature_names, X_train, y_train)
+                supervised_csv, unsupervised_csv, cv_csv = self._save_outputs(
+                    best_name, best_model, preprocessor, unsup, feature_metadata,
+                    cv_df, supervised_df, unsupervised_df, per_class_maps, rule_per_class, fi_df,
+                )
+
+                self._log_final_artifacts(
+                    best_name, best_model, preprocessor, unsup, feature_metadata,
+                    train_metric, test_metric, fi_df,
+                    supervised_csv, unsupervised_csv, cv_csv,
+                )
 
             artifact = ModelTrainerArtifact(
                 best_model_name=best_name,
@@ -436,3 +448,152 @@ class ModelTrainer:
             raise
         except Exception as exc:  # noqa: BLE001
             raise BPException(exc, sys)
+
+    # -------------------- MLflow logging helpers -------------------- #
+
+    @staticmethod
+    def _log_session_context(X_train, y_train, X_test, y_test, class_order) -> None:
+        tracking.set_tags({"class_order": "|".join(class_order)})
+        class_counts = Counter(y_train.tolist())
+        test_counts = Counter(y_test.tolist())
+        tracking.log_params({
+            "cv_folds": C.CV_FOLDS,
+            "random_state": C.RANDOM_STATE,
+            "train_test_split_ratio": C.TRAIN_TEST_SPLIT_RATIO,
+            "n_features": X_train.shape[1],
+            "n_train": X_train.shape[0],
+            "n_test": X_test.shape[0],
+            "n_numeric_features": len(C.NUMERIC_FEATURES),
+            "n_categorical_features": len(C.CATEGORICAL_FEATURES),
+            "sys_floor_base": C.SYS_FLOOR_BASE,
+            "dia_floor": C.DIA_FLOOR,
+            "hyper_sys_abs": C.HYPER_SYS_ABS,
+            "hyper_dia_abs": C.HYPER_DIA_ABS,
+            "hyper_sys_rel": C.HYPER_SYS_REL,
+            "hyper_dia_rel": C.HYPER_DIA_REL,
+            "hypo_sys_abs": C.HYPO_SYS_ABS,
+            "hypo_dia_abs": C.HYPO_DIA_ABS,
+        })
+        metrics = {}
+        for i, cls in enumerate(class_order):
+            metrics[f"class_count_train_{cls.lower()}"] = float(class_counts.get(i, 0))
+            metrics[f"class_count_test_{cls.lower()}"] = float(test_counts.get(i, 0))
+        tracking.log_metrics(metrics)
+
+    @staticmethod
+    def _log_cv_results(cv_df: pd.DataFrame) -> None:
+        for _, row in cv_df.iterrows():
+            name = row["model"]
+            tracking.log_metrics({
+                f"cv_macro_f1_mean_{name}": row["cv_macro_f1_mean"],
+                f"cv_macro_f1_std_{name}": row["cv_macro_f1_std"],
+                f"cv_balanced_accuracy_mean_{name}": row["cv_balanced_accuracy_mean"],
+            })
+
+    def _log_supervised_runs(
+        self,
+        fitted: Dict[str, object],
+        cv_df: pd.DataFrame,
+        metrics_map: Dict[str, MultiClassMetricArtifact],
+        per_class_maps: Dict[str, pd.DataFrame],
+    ) -> None:
+        if not tracking.is_enabled():
+            return
+        cv_lookup = cv_df.set_index("model").to_dict(orient="index")
+        for name, model in fitted.items():
+            with tracking.start_run(run_name=f"supervised_{name}", nested=True,
+                                     tags={"model_family": "supervised", "model_name": name}):
+                tracking.log_params(self._model_params(model))
+                cv_row = cv_lookup.get(name, {})
+                if cv_row:
+                    tracking.log_metrics({
+                        "cv_macro_f1_mean": cv_row.get("cv_macro_f1_mean"),
+                        "cv_macro_f1_std": cv_row.get("cv_macro_f1_std"),
+                        "cv_balanced_accuracy_mean": cv_row.get("cv_balanced_accuracy_mean"),
+                    })
+                metric = metrics_map.get(name)
+                if metric is not None:
+                    tracking.log_metrics({f"test_{k}": v for k, v in metric.__dict__.items() if v is not None})
+                per_class = per_class_maps.get(name)
+                if per_class is not None and not per_class.empty:
+                    tracking.log_dict(per_class.to_dict(orient="records"), f"{name}_perclass.json")
+
+    def _log_unsupervised_runs(
+        self,
+        unsup: UnsupervisedBPModel,
+        unsupervised_df: pd.DataFrame,
+        unsup_per_class: Dict[str, pd.DataFrame],
+        rule_per_class: pd.DataFrame,
+        rule_metrics: Dict[str, float],
+    ) -> None:
+        if not tracking.is_enabled():
+            return
+        unsup_lookup = unsupervised_df.set_index("model").to_dict(orient="index")
+
+        with tracking.start_run(run_name="unsupervised_KMeans3", nested=True,
+                                 tags={"model_family": "unsupervised", "model_name": "KMeans3"}):
+            tracking.log_params(self._model_params(unsup.kmeans))
+            tracking.log_params({"cluster_to_class_map": unsup.cluster_to_class_map})
+            m = unsup_lookup.get("KMeans3", {})
+            tracking.log_metrics({f"test_{k}": v for k, v in m.items() if k != "model"})
+            pc = unsup_per_class.get("KMeans3")
+            if pc is not None:
+                tracking.log_dict(pc.to_dict(orient="records"), "kmeans3_perclass.json")
+
+        with tracking.start_run(run_name="unsupervised_IsolationForestSplit", nested=True,
+                                 tags={"model_family": "unsupervised", "model_name": "IsolationForestSplit"}):
+            tracking.log_params(self._model_params(unsup.isolation_forest))
+            tracking.log_params({"sys_median_train": unsup.sys_median, "dia_median_train": unsup.dia_median})
+            m = unsup_lookup.get("IsolationForestSplit", {})
+            tracking.log_metrics({f"test_{k}": v for k, v in m.items() if k != "model"})
+            pc = unsup_per_class.get("IsolationForestSplit")
+            if pc is not None:
+                tracking.log_dict(pc.to_dict(orient="records"), "isolation_forest_perclass.json")
+
+        with tracking.start_run(run_name="baseline_SecondReadingRules", nested=True,
+                                 tags={"model_family": "rule", "model_name": "SecondReadingRules"}):
+            tracking.log_metrics({f"test_{k}": v for k, v in rule_metrics.items()})
+            if rule_per_class is not None:
+                tracking.log_dict(rule_per_class.to_dict(orient="records"), "rule_baseline_perclass.json")
+
+    def _log_final_artifacts(
+        self,
+        best_name: str,
+        best_model,
+        preprocessor,
+        unsup: UnsupervisedBPModel,
+        feature_metadata: Dict,
+        train_metric: MultiClassMetricArtifact,
+        test_metric: MultiClassMetricArtifact,
+        fi_df: pd.DataFrame,
+        supervised_csv: str,
+        unsupervised_csv: str,
+        cv_csv: str,
+    ) -> None:
+        if not tracking.is_enabled():
+            return
+        tracking.set_tags({"best_model_name": best_name})
+        tracking.log_metrics({f"best_train_{k}": v for k, v in train_metric.__dict__.items() if v is not None})
+        tracking.log_metrics({f"best_test_{k}": v for k, v in test_metric.__dict__.items() if v is not None})
+        tracking.log_dict(feature_metadata, "feature_metadata.json")
+        tracking.log_sklearn_model(best_model, artifact_path=f"supervised_best_{best_name}")
+        tracking.log_sklearn_model(preprocessor, artifact_path="preprocessor")
+        # Save unsupervised bundle as a standalone artifact (no sklearn wrapper; it's a dict).
+        tracking.log_artifact(self.model_trainer_config.unsupervised_model_file_path, artifact_path="unsupervised")
+        tracking.log_artifact(self.model_trainer_config.model_bundle_file_path, artifact_path="bundle")
+        tracking.log_artifact(supervised_csv, artifact_path="metrics")
+        tracking.log_artifact(unsupervised_csv, artifact_path="metrics")
+        tracking.log_artifact(cv_csv, artifact_path="metrics")
+        # Entire per-run metrics directory (per-class CSVs + feature importance).
+        tracking.log_artifacts(self.model_trainer_config.metrics_dir, artifact_path="metrics")
+        if not fi_df.empty:
+            tracking.log_dict(fi_df.head(25).to_dict(orient="records"), "feature_importance_top25.json")
+
+    @staticmethod
+    def _model_params(model) -> Dict[str, Any]:
+        if model is None:
+            return {}
+        try:
+            return {k: v for k, v in model.get_params().items()}
+        except Exception:  # noqa: BLE001
+            return {}
