@@ -18,3 +18,5 @@ logs/
 output/
 final_model/
 prediction_output/
+
+.claude

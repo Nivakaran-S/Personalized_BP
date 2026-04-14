@@ -22,7 +22,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Push to HuggingFace Space
+      - name: Push to HuggingFace Space (single-commit, no history)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
@@ -32,5 +32,11 @@ jobs:
             echo "Missing required secrets: HF_TOKEN, HF_USERNAME, HF_SPACE."
             exit 1
           fi
+          # Drop any tracked training outputs so they never reach HF (they are also in .gitignore
+          # but may linger in history from earlier commits — an orphan push sidesteps that).
+          rm -rf output Artifacts logs final_model prediction_output
+          git checkout --orphan hf-deploy
+          git add -A
+          git commit -m "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git remote add hf "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE}"
-          git push hf HEAD:main --force
+          git push hf hf-deploy:main --force
