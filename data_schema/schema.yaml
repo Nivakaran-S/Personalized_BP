@@ -1,0 +1,43 @@
+# Raw NHANES columns expected by the BP pipeline after ingestion merge.
+# Values are pandas-friendly dtype hints.
+columns:
+  SEQN: float
+  RIDAGEYR: float
+  RIAGENDR: float
+  RIDRETH3: float
+  INDFMPIR: float
+  DMDEDUC2: float
+  RIDEXPRG: float
+  BPXOSY1: float
+  BPXOSY2: float
+  BPXOSY3: float
+  BPXODI1: float
+  BPXODI2: float
+  BPXODI3: float
+  BPXOPLS1: float
+  BPXOPLS2: float
+  BPXOPLS3: float
+  BMXBMI: float
+  BMXWT: float
+  BMXHT: float
+  antihypertensiveflag: int
+  rxcount: float
+
+required_for_validation:
+  - BPXOSY1
+  - BPXOSY2
+  - BPXOSY3
+  - BPXODI1
+  - BPXODI2
+  - BPXODI3
+  - BPXOPLS1
+  - BPXOPLS2
+  - BPXOPLS3
+  - RIDAGEYR
+
+target:
+  name: alerttype
+  classes:
+    - Hypotensive
+    - Normal
+    - Hypertensive
