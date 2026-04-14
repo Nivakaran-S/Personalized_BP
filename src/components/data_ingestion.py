@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.request
 from typing import Dict, Optional
 
 import numpy as np
@@ -20,6 +21,10 @@ from src.exception.exception import BPException
 from src.logging.logger import logging
 
 
+NHANES_CDC_URL_TEMPLATE = "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2021/DataFiles/{file}"
+NHANES_MIN_VALID_BYTES = 100_000
+
+
 class DataIngestion:
     def __init__(self, data_ingestion_config: DataIngestionConfig):
         self.data_ingestion_config = data_ingestion_config
@@ -30,13 +35,50 @@ class DataIngestion:
             df[col] = df[col].apply(lambda v: v.decode("latin1") if isinstance(v, bytes) else v)
         return df
 
-    def _load_xpt(self, file_name: str) -> pd.DataFrame:
-        path = os.path.join(self.data_ingestion_config.nhanes_dir, file_name)
+    @staticmethod
+    def _looks_like_valid_xpt(path: str) -> bool:
+        """Quick sanity check: real NHANES XPT files are >100 KB and start with the XPORT header."""
         if not os.path.exists(path):
-            raise FileNotFoundError(
-                f"NHANES file not found: {path}. Download from "
-                f"https://wwwn.cdc.gov/Nchs/Nhanes/ and place under {self.data_ingestion_config.nhanes_dir}."
+            return False
+        try:
+            if os.path.getsize(path) < NHANES_MIN_VALID_BYTES:
+                return False
+            with open(path, "rb") as f:
+                header = f.read(40)
+            return b"HEADER RECORD" in header
+        except OSError:
+            return False
+
+    def _download_nhanes_file(self, file_name: str, dest: str) -> None:
+        url = NHANES_CDC_URL_TEMPLATE.format(file=file_name)
+        logging.info("Downloading NHANES file: %s", url)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0 (BP-pipeline auto-fetch)"}
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp, open(dest, "wb") as out:
+            out.write(resp.read())
+        size = os.path.getsize(dest)
+        logging.info("  -> %s: %d bytes", file_name, size)
+        if not self._looks_like_valid_xpt(dest):
+            raise BPException(
+                ValueError(
+                    f"Downloaded {file_name} ({size} bytes) is not a valid XPT file — "
+                    "the CDC endpoint may be blocked from this host."
+                ),
+                sys,
             )
+
+    def _ensure_nhanes_file(self, file_name: str) -> str:
+        path = os.path.join(self.data_ingestion_config.nhanes_dir, file_name)
+        if self._looks_like_valid_xpt(path):
+            return path
+        logging.info("NHANES file missing or invalid (%s) — attempting download.", path)
+        self._download_nhanes_file(file_name, path)
+        return path
+
+    def _load_xpt(self, file_name: str) -> pd.DataFrame:
+        path = self._ensure_nhanes_file(file_name)
         try:
             df = pd.read_sas(path, format="xport", encoding="latin1")
         except ValueError as exc:
