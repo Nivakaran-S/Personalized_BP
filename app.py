@@ -90,14 +90,31 @@ class Reading(BaseModel):
 class PatientPayload(BaseModel):
     age: float = Field(..., description="RIDAGEYR — age in years")
     gender: int = Field(..., description="RIAGENDR (1=Male, 2=Female)")
-    bmi: Optional[float] = None
+    bmi: Optional[float] = Field(default=None, description="Auto-computed from weight + height if omitted")
     weight: Optional[float] = None
     height: Optional[float] = None
     race_ethnicity: Optional[int] = Field(default=None, description="RIDRETH3 code")
     education: Optional[int] = Field(default=None, description="DMDEDUC2 code")
     income_ratio: Optional[float] = Field(default=None, description="INDFMPIR")
-    antihypertensive_flag: int = 0
+    antihypertensive_flag: int = Field(default=0, description="Legacy alias for on_antihypertensive")
+    on_antihypertensive: Optional[int] = Field(default=None, description="BPQ050A: currently on BP medication")
     rx_count: float = 0
+
+    # Clinical history (BPQ, MCQ, DIQ)
+    has_diagnosed_htn: int = Field(default=0, description="BPQ020: ever told had high BP")
+    has_high_cholesterol: int = Field(default=0, description="BPQ080: ever told had high cholesterol")
+    has_mi: int = Field(default=0, description="MCQ160E: ever had heart attack")
+    has_stroke: int = Field(default=0, description="MCQ160F: ever had stroke")
+    has_heart_failure: int = Field(default=0, description="MCQ160B: ever had heart failure")
+    has_chd: int = Field(default=0, description="MCQ160C: coronary heart disease")
+    has_angina: int = Field(default=0, description="MCQ160D: angina/angina pectoris")
+    has_diabetes: int = Field(default=0, description="DIQ010: ever told had diabetes")
+
+    # Acute symptoms (CDQ)
+    chest_pain_flag: int = Field(default=0, description="CDQ001: chest pain or discomfort")
+    severe_chest_pain_flag: int = Field(default=0, description="CDQ008: severe or half-hour chest pain")
+    sob_on_exertion_flag: int = Field(default=0, description="CDQ010: shortness of breath on stairs")
+
     readings: List[Reading] = Field(..., min_length=1)
 
 
@@ -131,6 +148,16 @@ async def api_predict(payload: PatientPayload) -> Dict[str, Any]:
     try:
         data = payload.model_dump()
         data["readings"] = [r.model_dump() for r in payload.readings]
+        # Auto-compute BMI from weight + height if the client didn't send it.
+        if (data.get("bmi") is None) and data.get("weight") and data.get("height"):
+            try:
+                data["bmi"] = float(data["weight"]) / ((float(data["height"]) / 100.0) ** 2)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+        # Unify the two antihypertensive fields so downstream code sees one source of truth.
+        if data.get("on_antihypertensive") is None:
+            data["on_antihypertensive"] = int(data.get("antihypertensive_flag", 0))
+        data["antihypertensive_flag"] = int(data["on_antihypertensive"])
         result = predict_patient_alert(
             data,
             MODEL_STATE["supervised_bundle"],

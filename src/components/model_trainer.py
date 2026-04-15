@@ -494,6 +494,14 @@ class ModelTrainer:
             "hyper_dia_rel": C.HYPER_DIA_REL,
             "hypo_sys_abs": C.HYPO_SYS_ABS,
             "hypo_dia_abs": C.HYPO_DIA_ABS,
+            "high_risk_hyper_sys_abs": C.HIGH_RISK_HYPER_SYS_ABS,
+            "high_risk_hyper_dia_abs": C.HIGH_RISK_HYPER_DIA_ABS,
+            "high_risk_hyper_sys_rel": C.HIGH_RISK_HYPER_SYS_REL,
+            "high_risk_hyper_dia_rel": C.HIGH_RISK_HYPER_DIA_REL,
+            "high_risk_hypo_sys_abs": C.HIGH_RISK_HYPO_SYS_ABS,
+            "high_risk_hypo_dia_abs": C.HIGH_RISK_HYPO_DIA_ABS,
+            "symptom_bump_sys": C.SYMPTOM_BUMP_SYS_CUTOFF,
+            "symptom_bump_dia": C.SYMPTOM_BUMP_DIA_CUTOFF,
         })
         metrics = {}
         for i, cls in enumerate(class_order):

@@ -46,9 +46,13 @@ body { background:#f6f8fb; }
               <option value="2" selected>Female</option>
             </select>
           </div>
-          <div class="col-md-4"><label class="form-label">BMI</label><input type="number" step="0.1" class="form-control" id="bmi" value="27" /></div>
           <div class="col-md-4"><label class="form-label">Weight (kg)</label><input type="number" step="0.1" class="form-control" id="weight" value="70" /></div>
           <div class="col-md-4"><label class="form-label">Height (cm)</label><input type="number" step="0.1" class="form-control" id="height" value="160" /></div>
+          <div class="col-md-4">
+            <label class="form-label">BMI</label>
+            <input type="number" step="0.1" class="form-control" id="bmi" readonly />
+            <small class="text-muted">Calculated from weight and height.</small>
+          </div>
           <div class="col-md-4">
             <label class="form-label">Race / ethnicity</label>
             <select class="form-select" id="race_ethnicity">
@@ -76,16 +80,59 @@ body { background:#f6f8fb; }
             <small class="text-muted">NHANES INDFMPIR: 0 = lowest, &gt; 1 = above poverty line.</small>
           </div>
           <div class="col-md-4">
-            <label class="form-label">On antihypertensive medication?</label>
-            <select class="form-select" id="antihypertensive_flag">
-              <option value="0" selected>No</option>
-              <option value="1">Yes</option>
-            </select>
-          </div>
-          <div class="col-md-4">
             <label class="form-label">Prescription count</label>
             <input type="number" step="1" class="form-control" id="rx_count" value="0" min="0" />
             <small class="text-muted">Number of current prescription drugs.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-3">
+        <h5>Clinical history & symptoms</h5>
+        <small class="text-muted d-block mb-2">All default to No. Set to Yes only if the patient has the condition / symptom.</small>
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label">Diagnosed with high BP?</label>
+            <select class="form-select" id="has_diagnosed_htn"><option value="0" selected>No</option><option value="1">Yes</option></select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Currently on BP medication?</label>
+            <select class="form-select" id="on_antihypertensive"><option value="0" selected>No</option><option value="1">Yes</option></select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">High cholesterol?</label>
+            <select class="form-select" id="has_high_cholesterol"><option value="0" selected>No</option><option value="1">Yes</option></select>
+          </div>
+
+          <div class="col-md-12 mt-2"><strong class="small text-muted">Cardiac history</strong></div>
+          <div class="col-md-4 form-check ms-3">
+            <input class="form-check-input" type="checkbox" id="has_mi"><label class="form-check-label" for="has_mi">Heart attack</label>
+          </div>
+          <div class="col-md-4 form-check">
+            <input class="form-check-input" type="checkbox" id="has_stroke"><label class="form-check-label" for="has_stroke">Stroke</label>
+          </div>
+          <div class="col-md-3 form-check">
+            <input class="form-check-input" type="checkbox" id="has_heart_failure"><label class="form-check-label" for="has_heart_failure">Heart failure</label>
+          </div>
+          <div class="col-md-4 form-check ms-3">
+            <input class="form-check-input" type="checkbox" id="has_chd"><label class="form-check-label" for="has_chd">Coronary heart disease</label>
+          </div>
+          <div class="col-md-4 form-check">
+            <input class="form-check-input" type="checkbox" id="has_angina"><label class="form-check-label" for="has_angina">Angina</label>
+          </div>
+          <div class="col-md-3 form-check">
+            <input class="form-check-input" type="checkbox" id="has_diabetes"><label class="form-check-label" for="has_diabetes">Diabetes</label>
+          </div>
+
+          <div class="col-md-12 mt-2"><strong class="small text-muted">Acute symptoms</strong></div>
+          <div class="col-md-4 form-check ms-3">
+            <input class="form-check-input" type="checkbox" id="chest_pain_flag"><label class="form-check-label" for="chest_pain_flag">Chest pain / discomfort</label>
+          </div>
+          <div class="col-md-4 form-check">
+            <input class="form-check-input" type="checkbox" id="severe_chest_pain_flag"><label class="form-check-label" for="severe_chest_pain_flag">Severe chest pain (30+ min)</label>
+          </div>
+          <div class="col-md-3 form-check">
+            <input class="form-check-input" type="checkbox" id="sob_on_exertion_flag"><label class="form-check-label" for="sob_on_exertion_flag">Shortness of breath on stairs</label>
           </div>
         </div>
       </div>
@@ -178,23 +225,52 @@ function updateCount() {
   const n = document.getElementById('readings-body').children.length;
   document.getElementById('n-readings').textContent = n;
 }
+function recalcBmi() {
+  const w = parseFloat(document.getElementById('weight').value);
+  const h = parseFloat(document.getElementById('height').value);
+  const bmi = (w > 0 && h > 0) ? (w / Math.pow(h / 100, 2)) : '';
+  document.getElementById('bmi').value = bmi ? bmi.toFixed(1) : '';
+}
+function selectVal(id) {
+  const el = document.getElementById(id);
+  return el ? (parseInt(el.value) || 0) : 0;
+}
+function checkVal(id) {
+  const el = document.getElementById(id);
+  return el && el.checked ? 1 : 0;
+}
 function collectPayload() {
   const readings = [...document.querySelectorAll('#readings-body tr')].map(tr => ({
     systolic: parseFloat(tr.querySelector('.sys').value),
     diastolic: parseFloat(tr.querySelector('.dia').value),
     pulse: parseFloat(tr.querySelector('.pul').value),
   }));
+  const bmiVal = parseFloat(document.getElementById('bmi').value);
   return {
     age: parseFloat(document.getElementById('age').value),
     gender: parseInt(document.getElementById('gender').value),
-    bmi: parseFloat(document.getElementById('bmi').value),
+    bmi: isNaN(bmiVal) ? null : bmiVal,
     weight: parseFloat(document.getElementById('weight').value),
     height: parseFloat(document.getElementById('height').value),
     race_ethnicity: parseInt(document.getElementById('race_ethnicity').value),
     education: parseInt(document.getElementById('education').value),
     income_ratio: parseFloat(document.getElementById('income_ratio').value),
-    antihypertensive_flag: parseInt(document.getElementById('antihypertensive_flag').value) || 0,
+    on_antihypertensive: selectVal('on_antihypertensive'),
+    antihypertensive_flag: selectVal('on_antihypertensive'),
     rx_count: parseFloat(document.getElementById('rx_count').value) || 0,
+
+    has_diagnosed_htn: selectVal('has_diagnosed_htn'),
+    has_high_cholesterol: selectVal('has_high_cholesterol'),
+    has_mi: checkVal('has_mi'),
+    has_stroke: checkVal('has_stroke'),
+    has_heart_failure: checkVal('has_heart_failure'),
+    has_chd: checkVal('has_chd'),
+    has_angina: checkVal('has_angina'),
+    has_diabetes: checkVal('has_diabetes'),
+    chest_pain_flag: checkVal('chest_pain_flag'),
+    severe_chest_pain_flag: checkVal('severe_chest_pain_flag'),
+    sob_on_exertion_flag: checkVal('sob_on_exertion_flag'),
+
     readings,
   };
 }
@@ -265,6 +341,11 @@ async function refreshHealth() {
     badge.textContent = `sup=${data.supervised_loaded} · unsup=${data.unsupervised_loaded}`;
   } catch { /* ignore */ }
 }
+
+// BMI auto-calc on weight/height change.
+document.getElementById('weight').addEventListener('input', recalcBmi);
+document.getElementById('height').addEventListener('input', recalcBmi);
+recalcBmi();
 
 // Seed with 3 readings.
 addReading(128, 82, 72);

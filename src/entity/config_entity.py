@@ -37,6 +37,10 @@ class DataIngestionConfig:
         self.nhanes_demo_file: str = training_pipeline.NHANES_DEMO_FILE
         self.nhanes_bmx_file: str = training_pipeline.NHANES_BMX_FILE
         self.nhanes_rxq_file: str = training_pipeline.NHANES_RXQ_FILE
+        self.nhanes_bpq_file: str = training_pipeline.NHANES_BPQ_FILE
+        self.nhanes_cdq_file: str = training_pipeline.NHANES_CDQ_FILE
+        self.nhanes_mcq_file: str = training_pipeline.NHANES_MCQ_FILE
+        self.nhanes_diq_file: str = training_pipeline.NHANES_DIQ_FILE
         self.dryad_sleep_file: str = training_pipeline.DRYAD_SLEEP_FILE
         self.dryad_participant_file: str = training_pipeline.DRYAD_PARTICIPANT_FILE
 

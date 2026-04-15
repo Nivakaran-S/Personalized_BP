@@ -23,6 +23,26 @@ columns:
   antihypertensiveflag: int
   rxcount: float
 
+  # BPQ_L — blood pressure & cholesterol questionnaire (1=Yes, 2=No, 7/9=Refused/DK)
+  BPQ020: float       # ever told had high BP
+  BPQ050A: float      # currently taking BP medication
+  BPQ080: float       # ever told had high cholesterol
+
+  # CDQ_L — cardiovascular symptoms
+  CDQ001: float       # chest pain or discomfort
+  CDQ008: float       # severe / 30-min chest pain
+  CDQ010: float       # shortness of breath on stairs
+
+  # MCQ_L — diagnosed cardiac conditions
+  MCQ160B: float      # heart failure
+  MCQ160C: float      # coronary heart disease
+  MCQ160D: float      # angina pectoris
+  MCQ160E: float      # heart attack
+  MCQ160F: float      # stroke
+
+  # DIQ_L — diabetes
+  DIQ010: float       # ever told had diabetes
+
 required_for_validation:
   - BPXOSY1
   - BPXOSY2

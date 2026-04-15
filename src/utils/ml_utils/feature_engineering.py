@@ -63,6 +63,59 @@ def engineer_features(df: pd.DataFrame, dryad_stats: Dict[str, float]) -> pd.Dat
     out["antihypertensiveflag"] = out["antihypertensiveflag"].fillna(0).astype(int)
     out["rxcount"] = pd.to_numeric(out["rxcount"], errors="coerce").fillna(0)
 
+    out = _add_clinical_flags(out)
+    return out
+
+
+def _binary_flag(series: pd.Series) -> pd.Series:
+    """Treat 1 as Yes, 0/NaN as No (the preferred default for training + inference)."""
+    return pd.to_numeric(series, errors="coerce").fillna(0).clip(0, 1).astype(int)
+
+
+def _add_clinical_flags(out: pd.DataFrame) -> pd.DataFrame:
+    """
+    Derive clean binary flags from raw NHANES questionnaire codes (already 0/1/NaN
+    after ingestion's `_aggregate_questionnaire`) and compute rollup indices used
+    by the risk-aware target rule.
+    """
+    code_to_flag = {
+        "BPQ020":  "has_diagnosed_htn",
+        "BPQ050A": "on_antihypertensive",
+        "BPQ080":  "has_high_cholesterol",
+        "CDQ001":  "chest_pain_flag",
+        "CDQ008":  "severe_chest_pain_flag",
+        "CDQ010":  "sob_on_exertion_flag",
+        "MCQ160B": "has_heart_failure",
+        "MCQ160C": "has_chd",
+        "MCQ160D": "has_angina",
+        "MCQ160E": "has_mi",
+        "MCQ160F": "has_stroke",
+        "DIQ010":  "has_diabetes",
+    }
+    for src, dst in code_to_flag.items():
+        if src in out.columns:
+            out[dst] = _binary_flag(out[src])
+        else:
+            out[dst] = 0
+
+    out["cardiac_history_count"] = (
+        out["has_mi"] + out["has_stroke"] + out["has_heart_failure"]
+        + out["has_chd"] + out["has_angina"]
+    ).astype(int)
+    out["acute_symptom_count"] = (
+        out["chest_pain_flag"] + out["sob_on_exertion_flag"] + out["severe_chest_pain_flag"]
+    ).astype(int)
+    out["high_risk_profile"] = (
+        (out["has_diagnosed_htn"] == 1)
+        | (out["on_antihypertensive"] == 1)
+        | (out["cardiac_history_count"] > 0)
+        | (out["has_diabetes"] == 1)
+    ).astype(int)
+
+    # Keep antihypertensiveflag aligned with the more specific BPQ050A answer
+    # (ingestion already prefers it, but re-sync here after the binary-flag step).
+    out["antihypertensiveflag"] = out[["antihypertensiveflag", "on_antihypertensive"]].max(axis=1).astype(int)
+
     return out
 
 
@@ -128,20 +181,46 @@ def compute_normalization_stats(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
+def _risk_aware_thresholds(is_high_risk: bool) -> Dict[str, float]:
+    """Pick the threshold set for label construction based on patient risk profile."""
+    if is_high_risk:
+        return {
+            "hypo_sys_abs": C.HIGH_RISK_HYPO_SYS_ABS,
+            "hypo_dia_abs": C.HIGH_RISK_HYPO_DIA_ABS,
+            "hypo_sys_rel": C.HIGH_RISK_HYPO_SYS_REL,
+            "hypo_dia_rel": C.HIGH_RISK_HYPO_DIA_REL,
+            "hyper_sys_abs": C.HIGH_RISK_HYPER_SYS_ABS,
+            "hyper_dia_abs": C.HIGH_RISK_HYPER_DIA_ABS,
+            "hyper_sys_rel": C.HIGH_RISK_HYPER_SYS_REL,
+            "hyper_dia_rel": C.HIGH_RISK_HYPER_DIA_REL,
+        }
+    return {
+        "hypo_sys_abs": C.HYPO_SYS_ABS,
+        "hypo_dia_abs": C.HYPO_DIA_ABS,
+        "hypo_sys_rel": C.HYPO_SYS_REL,
+        "hypo_dia_rel": C.HYPO_DIA_REL,
+        "hyper_sys_abs": C.HYPER_SYS_ABS,
+        "hyper_dia_abs": C.HYPER_DIA_ABS,
+        "hyper_sys_rel": C.HYPER_SYS_REL,
+        "hyper_dia_rel": C.HYPER_DIA_REL,
+    }
+
+
 def make_personalized_alert_type(
     row: pd.Series,
     sys_floor: float = C.SYS_FLOOR_BASE,
     dia_floor: float = C.DIA_FLOOR,
 ) -> Optional[str]:
     """
-    Notebook target: classify reading 3 (BPXOSY3/BPXODI3) relative to the patient's own
-    baseline (readings 1-2 mean/std).
+    Classify reading 3 (BPXOSY3/BPXODI3) relative to the patient's own baseline
+    (readings 1-2 mean/std), with risk-aware thresholds.
 
-    Hypotensive  if (sbp3 < 90 OR dbp3 < 60)
-                 OR ((sbp3 < 100 OR dbp3 < 65) AND (z_sys <= -1 OR z_dia <= -1))
-    Hypertensive if (sbp3 >= 140 OR dbp3 >= 90)
-                 OR ((sbp3 >= 130 OR dbp3 >= 80) AND (z_sys >= 1 OR z_dia >= 1))
-    Normal       otherwise. Hypotensive is checked first and returns early.
+    For patients flagged `high_risk_profile` (diagnosed HTN, on BP meds, cardiac history,
+    or diabetes), tighter ACC/AHA cutoffs apply — a 135/85 spike becomes Hypertensive
+    instead of Normal. For others, the default cutoffs (notebook defaults) remain.
+
+    Additionally, a "Normal" label is bumped to "Hypertensive" when the patient reports
+    acute chest pain and the reading is above the SYMPTOM_BUMP cutoffs.
     """
     try:
         sy3 = float(row["BPXOSY3"])
@@ -158,18 +237,31 @@ def make_personalized_alert_type(
     z_sys = (sy3 - sys_mean) / (sys_scale + 1e-9)
     z_dia = (di3 - dia_mean) / (dia_scale + 1e-9)
 
-    abs_hypo = (sy3 < C.HYPO_SYS_ABS) or (di3 < C.HYPO_DIA_ABS)
-    rel_hypo = ((sy3 < C.HYPO_SYS_REL) or (di3 < C.HYPO_DIA_REL)) and (
+    is_high_risk = bool(int(row.get("high_risk_profile", 0) or 0))
+    t = _risk_aware_thresholds(is_high_risk)
+
+    abs_hypo = (sy3 < t["hypo_sys_abs"]) or (di3 < t["hypo_dia_abs"])
+    rel_hypo = ((sy3 < t["hypo_sys_rel"]) or (di3 < t["hypo_dia_rel"])) and (
         (z_sys <= C.Z_LOW) or (z_dia <= C.Z_LOW)
     )
     if abs_hypo or rel_hypo:
         return "Hypotensive"
 
-    abs_hyper = (sy3 >= C.HYPER_SYS_ABS) or (di3 >= C.HYPER_DIA_ABS)
-    rel_hyper = ((sy3 >= C.HYPER_SYS_REL) or (di3 >= C.HYPER_DIA_REL)) and (
+    abs_hyper = (sy3 >= t["hyper_sys_abs"]) or (di3 >= t["hyper_dia_abs"])
+    rel_hyper = ((sy3 >= t["hyper_sys_rel"]) or (di3 >= t["hyper_dia_rel"])) and (
         (z_sys >= C.Z_HIGH) or (z_dia >= C.Z_HIGH)
     )
     if abs_hyper or rel_hyper:
+        return "Hypertensive"
+
+    # Symptom bump: a "Normal" reading in someone reporting acute chest pain and
+    # at/above the bump cutoffs escalates to Hypertensive.
+    has_chest_pain = bool(int(row.get("chest_pain_flag", 0) or 0)) or bool(
+        int(row.get("severe_chest_pain_flag", 0) or 0)
+    )
+    if has_chest_pain and (
+        sy3 >= C.SYMPTOM_BUMP_SYS_CUTOFF or di3 >= C.SYMPTOM_BUMP_DIA_CUTOFF
+    ):
         return "Hypertensive"
 
     return "Normal"
@@ -190,6 +282,21 @@ def build_patient_features(payload: Dict[str, Any], feature_metadata: Dict[str, 
     if len(readings) < 3:
         raise ValueError("At least 3 BP readings are required for supervised prediction.")
 
+    # Server-side BMI fallback: if client didn't supply BMI but gave weight + height, compute it.
+    bmi = payload.get("bmi")
+    weight = payload.get("weight")
+    height = payload.get("height")
+    if (bmi is None or (isinstance(bmi, float) and np.isnan(bmi))) and weight and height:
+        try:
+            bmi = float(weight) / ((float(height) / 100.0) ** 2)
+        except (TypeError, ValueError, ZeroDivisionError):
+            bmi = None
+
+    # Clinical fields: prefer the newer keys but accept legacy aliases.
+    on_antihyp = payload.get("on_antihypertensive")
+    if on_antihyp is None:
+        on_antihyp = payload.get("antihypertensive_flag", 0)
+
     row = {
         "BPXOSY1": readings[0].get("systolic"),
         "BPXOSY2": readings[1].get("systolic"),
@@ -205,11 +312,24 @@ def build_patient_features(payload: Dict[str, Any], feature_metadata: Dict[str, 
         "RIDRETH3": payload.get("race_ethnicity"),
         "INDFMPIR": payload.get("income_ratio"),
         "DMDEDUC2": payload.get("education"),
-        "BMXBMI": payload.get("bmi"),
-        "BMXWT": payload.get("weight"),
-        "BMXHT": payload.get("height"),
-        "antihypertensiveflag": payload.get("antihypertensive_flag", 0),
+        "BMXBMI": bmi,
+        "BMXWT": weight,
+        "BMXHT": height,
+        "antihypertensiveflag": int(bool(on_antihyp)),
         "rxcount": payload.get("rx_count", 0),
+        # Clinical history + symptoms — treat as 1/0 at ingestion/inference parity
+        "BPQ020":  payload.get("has_diagnosed_htn", 0),
+        "BPQ050A": on_antihyp,
+        "BPQ080":  payload.get("has_high_cholesterol", 0),
+        "CDQ001":  payload.get("chest_pain_flag", 0),
+        "CDQ008":  payload.get("severe_chest_pain_flag", 0),
+        "CDQ010":  payload.get("sob_on_exertion_flag", 0),
+        "MCQ160B": payload.get("has_heart_failure", 0),
+        "MCQ160C": payload.get("has_chd", 0),
+        "MCQ160D": payload.get("has_angina", 0),
+        "MCQ160E": payload.get("has_mi", 0),
+        "MCQ160F": payload.get("has_stroke", 0),
+        "DIQ010":  payload.get("has_diabetes", 0),
     }
     df = pd.DataFrame([row])
     df = engineer_features(df, feature_metadata.get("dryad_stats", C.DRYAD_DEFAULTS))

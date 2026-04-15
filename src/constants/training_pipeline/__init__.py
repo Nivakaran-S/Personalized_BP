@@ -44,6 +44,18 @@ NHANES_DEMO_FILE: str = "DEMO_L.xpt"
 NHANES_BMX_FILE: str = "BMX_L.xpt"
 NHANES_RXQ_FILE: str = "RXQ_RX_L.xpt"
 
+# Questionnaire files — clinical history + symptoms
+NHANES_BPQ_FILE: str = "BPQ_L.xpt"   # BP / cholesterol history
+NHANES_CDQ_FILE: str = "CDQ_L.xpt"   # Cardiovascular symptoms
+NHANES_MCQ_FILE: str = "MCQ_L.xpt"   # Medical conditions
+NHANES_DIQ_FILE: str = "DIQ_L.xpt"   # Diabetes
+
+# Raw NHANES code columns pulled from each questionnaire (1=Yes, 2=No, 7/9=Refused/DK)
+NHANES_BPQ_CODE_COLS = ["BPQ020", "BPQ080", "BPQ050A"]
+NHANES_CDQ_CODE_COLS = ["CDQ001", "CDQ008", "CDQ010"]
+NHANES_MCQ_CODE_COLS = ["MCQ160B", "MCQ160C", "MCQ160D", "MCQ160E", "MCQ160F"]
+NHANES_DIQ_CODE_COLS = ["DIQ010"]
+
 DRYAD_SLEEP_FILE: str = "Blood_Pressure_Sleep_Info.xlsx"
 DRYAD_PARTICIPANT_FILE: str = "Participant_Information.csv"
 
@@ -89,6 +101,21 @@ HYPER_DIA_ABS: float = 90.0
 HYPER_SYS_REL: float = 130.0
 HYPER_DIA_REL: float = 80.0
 
+# Tighter ACC/AHA goals for high-risk patients (diagnosed HTN, on meds, cardiac history, diabetes)
+HIGH_RISK_HYPO_SYS_ABS: float = 95.0
+HIGH_RISK_HYPO_DIA_ABS: float = 65.0
+HIGH_RISK_HYPO_SYS_REL: float = 105.0
+HIGH_RISK_HYPO_DIA_REL: float = 70.0
+HIGH_RISK_HYPER_SYS_ABS: float = 130.0
+HIGH_RISK_HYPER_DIA_ABS: float = 80.0
+HIGH_RISK_HYPER_SYS_REL: float = 125.0
+HIGH_RISK_HYPER_DIA_REL: float = 75.0
+
+# Symptom-bump cutoffs: if the reading is at/above these AND the patient reports acute
+# chest pain, a "Normal" label escalates to "Hypertensive".
+SYMPTOM_BUMP_SYS_CUTOFF: float = 125.0
+SYMPTOM_BUMP_DIA_CUTOFF: float = 75.0
+
 Z_LOW: float = -1.0
 Z_HIGH: float = 1.0
 
@@ -102,6 +129,12 @@ NUMERIC_FEATURES = [
     "pp12", "map12", "syscv12", "diacv12",
     "lowincomeflag",
     "morningsurgeproxy", "nondipperrisk", "circadiandysregulationindex",
+    # Clinical history + symptoms (from BPQ/CDQ/MCQ/DIQ questionnaires)
+    "has_diagnosed_htn", "on_antihypertensive", "has_high_cholesterol",
+    "chest_pain_flag", "sob_on_exertion_flag", "severe_chest_pain_flag",
+    "has_mi", "has_stroke", "has_heart_failure", "has_chd", "has_angina",
+    "has_diabetes",
+    "cardiac_history_count", "acute_symptom_count", "high_risk_profile",
 ]
 CATEGORICAL_FEATURES = ["obesitycat"]
 

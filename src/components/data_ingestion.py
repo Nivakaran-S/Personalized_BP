@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import urllib.request
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -69,6 +69,21 @@ class DataIngestion:
                 sys,
             )
 
+    def _load_xpt_optional(self, file_name: str) -> pd.DataFrame:
+        """
+        Load a questionnaire XPT file, but tolerate 404s. NHANES sometimes drops
+        questionnaires between cycles (e.g. CDQ is missing from the 2021 cycle).
+        Returns an empty SEQN-only DataFrame if the file isn't available.
+        """
+        try:
+            return self._load_xpt(file_name)
+        except Exception as exc:  # noqa: BLE001
+            logging.warning(
+                "Optional NHANES file %s unavailable (%s) — proceeding without it.",
+                file_name, exc,
+            )
+            return pd.DataFrame(columns=["SEQN"])
+
     def _ensure_nhanes_file(self, file_name: str) -> str:
         path = os.path.join(self.data_ingestion_config.nhanes_dir, file_name)
         if self._looks_like_valid_xpt(path):
@@ -97,18 +112,41 @@ class DataIngestion:
             demo = self._load_xpt(self.data_ingestion_config.nhanes_demo_file)
             bmx = self._load_xpt(self.data_ingestion_config.nhanes_bmx_file)
             rx = self._load_xpt(self.data_ingestion_config.nhanes_rxq_file)
+            bpq = self._load_xpt_optional(self.data_ingestion_config.nhanes_bpq_file)
+            cdq = self._load_xpt_optional(self.data_ingestion_config.nhanes_cdq_file)
+            mcq = self._load_xpt_optional(self.data_ingestion_config.nhanes_mcq_file)
+            diq = self._load_xpt_optional(self.data_ingestion_config.nhanes_diq_file)
             logging.info(
-                "Loaded NHANES: bp=%s demo=%s bmx=%s rx=%s",
+                "Loaded NHANES: bp=%s demo=%s bmx=%s rx=%s bpq=%s cdq=%s mcq=%s diq=%s",
                 bp.shape, demo.shape, bmx.shape, rx.shape,
+                bpq.shape, cdq.shape, mcq.shape, diq.shape,
             )
 
             rx_agg = self._aggregate_rx(rx)
+            bpq_agg = self._aggregate_questionnaire(bpq, C.NHANES_BPQ_CODE_COLS)
+            cdq_agg = self._aggregate_questionnaire(cdq, C.NHANES_CDQ_CODE_COLS)
+            mcq_agg = self._aggregate_questionnaire(mcq, C.NHANES_MCQ_CODE_COLS)
+            diq_agg = self._aggregate_questionnaire(diq, C.NHANES_DIQ_CODE_COLS)
 
             merged = demo.merge(bp, on="SEQN", how="inner")
             merged = merged.merge(bmx, on="SEQN", how="left")
             merged = merged.merge(rx_agg, on="SEQN", how="left")
-            merged["antihypertensiveflag"] = merged["antihypertensiveflag"].fillna(0).astype(int)
+            merged = merged.merge(bpq_agg, on="SEQN", how="left")
+            merged = merged.merge(cdq_agg, on="SEQN", how="left")
+            merged = merged.merge(mcq_agg, on="SEQN", how="left")
+            merged = merged.merge(diq_agg, on="SEQN", how="left")
+
+            # Prefer BPQ050A (specific "currently taking BP medication") over RXDUSE
+            # ("taking any prescription"). Fall back to RXDUSE when BPQ050A is missing.
+            if "BPQ050A" in merged.columns:
+                specific = pd.to_numeric(merged["BPQ050A"], errors="coerce")
+                merged["antihypertensiveflag"] = specific.fillna(
+                    merged["antihypertensiveflag"]
+                ).fillna(0).astype(int).clip(0, 1)
+            else:
+                merged["antihypertensiveflag"] = merged["antihypertensiveflag"].fillna(0).astype(int)
             merged["rxcount"] = merged["rxcount"].fillna(0)
+
             logging.info("Merged NHANES shape: %s", merged.shape)
             return merged
         except FileNotFoundError:
@@ -134,6 +172,25 @@ class DataIngestion:
         ).fillna(0).astype(int).clip(0, 1)
         grouped["rxcount"] = pd.to_numeric(grouped["rxcount"], errors="coerce").fillna(0)
         return grouped
+
+    @staticmethod
+    def _aggregate_questionnaire(df: pd.DataFrame, code_cols: list) -> pd.DataFrame:
+        """
+        Per-subject aggregation of NHANES yes/no codes.
+        Maps 1 → 1 (Yes), 2 → 0 (No), 7/9 → NaN (Refused / Don't know). Any "Yes"
+        across multiple rows for the same SEQN wins (groupby max, skipna preserved).
+        """
+        if df.empty or "SEQN" not in df.columns:
+            return pd.DataFrame(columns=["SEQN"] + code_cols)
+        keep = ["SEQN"] + [c for c in code_cols if c in df.columns]
+        if len(keep) == 1:
+            return pd.DataFrame({"SEQN": df["SEQN"].unique()})
+        sub = df[keep].copy()
+        for c in keep[1:]:
+            v = pd.to_numeric(sub[c], errors="coerce").replace({7: np.nan, 9: np.nan})
+            # 1 → 1, 2 → 0. Anything else (already NaN) stays NaN.
+            sub[c] = v.map({1.0: 1.0, 2.0: 0.0})
+        return sub.groupby("SEQN", as_index=False).max(numeric_only=True)
 
     def compute_dryad_stats(self) -> Dict[str, float]:
         """Compute population dipping / morning-surge / std statistics from Dryad, if files exist."""

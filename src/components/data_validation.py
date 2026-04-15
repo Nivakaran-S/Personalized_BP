@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -51,7 +51,23 @@ class DataValidation:
                 )
         return df
 
-    def _apply_filters(self, df: pd.DataFrame) -> (pd.DataFrame, Dict[str, int]):
+    @staticmethod
+    def _questionnaire_coverage(df: pd.DataFrame) -> Dict[str, float]:
+        """Report the % of rows with a non-null answer for each questionnaire column."""
+        cols = (
+            C.NHANES_BPQ_CODE_COLS
+            + C.NHANES_CDQ_CODE_COLS
+            + C.NHANES_MCQ_CODE_COLS
+            + C.NHANES_DIQ_CODE_COLS
+        )
+        total = max(len(df), 1)
+        return {
+            c: round(float(df[c].notna().sum()) / total * 100.0, 2)
+            for c in cols
+            if c in df.columns
+        }
+
+    def _apply_filters(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, int]]:
         counts: Dict[str, int] = {"start": len(df)}
 
         if "RIDEXPRG" in df.columns:
@@ -85,10 +101,14 @@ class DataValidation:
             os.makedirs(os.path.dirname(self.data_validation_config.validated_file_path), exist_ok=True)
             df.to_csv(self.data_validation_config.validated_file_path, index=False)
 
+            coverage = self._questionnaire_coverage(df)
+            logging.info("Questionnaire coverage: %s", coverage)
+
             report = {
                 "required_columns": column_checks,
                 "row_counts": counts,
                 "final_rows": int(len(df)),
+                "questionnaire_coverage_pct": coverage,
             }
             write_yaml_file(self.data_validation_config.validation_report_file_path, report, replace=True)
 
