@@ -582,14 +582,10 @@ def predict_patient_alert_unsupervised(
     z_sys = (sy - patient_sys_mean) / (sys_scale + 1e-9)
     z_dia = (di - patient_dia_mean) / (dia_scale + 1e-9)
 
-    # Absolute-threshold safety rails — a 88/58 reading is clinically hypotensive
-    # regardless of what the personalized ML thinks, because the patient could faint.
-    # Symmetrically for 140/90+. These override the ML decision for patient safety.
-    abs_hypo = (sy < C.HYPO_SYS_ABS) or (di < C.HYPO_DIA_ABS)
-    abs_hyper = (sy >= C.HYPER_SYS_ABS) or (di >= C.HYPER_DIA_ABS)
-
-    # Run the rule up-front so we can use it as a fallback when the ML says inlier
-    # but the relative z-score rule flagged a personal anomaly.
+    # Rule cross-check (observability only — not authoritative). If the patient's
+    # personal history genuinely hovers around high BP, then a high latest reading
+    # is normal FOR THEM — the ML decides, the rule just records what a population
+    # rule would have said so callers can see the difference.
     row = pd.Series({
         "BPXOSY3": sy,
         "BPXODI3": di,
@@ -604,30 +600,17 @@ def predict_patient_alert_unsupervised(
     })
     rule_class = make_personalized_alert_type(row, sys_floor=sys_floor, dia_floor=dia_floor) or "Normal"
 
-    # Decision hierarchy:
-    #   1. Absolute safety rails (abs_hyper/abs_hypo) — clinical must-flags, override anything.
-    #   2. ML anomaly → use direction from patient's own baseline.
-    #   3. ML inlier but the z-score rule flagged a relative anomaly → trust the rule
-    #      (this catches the cases the IsolationForest misses with a small personal history).
-    #   4. ML inlier + rule Normal → Normal.
-    if abs_hyper:
-        predicted_class = "Hypertensive"
-        decision_source = "absolute_safety_rail"
-    elif abs_hypo:
-        predicted_class = "Hypotensive"
-        decision_source = "absolute_safety_rail"
-    elif iso_pred == -1:
+    # Pure ML decision: anomalous → classify by direction vs patient's own baseline,
+    # otherwise Normal. No absolute thresholds, no rule fallback. "Normal for this
+    # patient" is whatever the IsolationForest says is in-distribution for them.
+    if iso_pred == -1:
         if z_sys > 0 or z_dia > 0:
             predicted_class = "Hypertensive"
         else:
             predicted_class = "Hypotensive"
-        decision_source = "per_patient_isolation_forest"
-    elif rule_class != "Normal":
-        predicted_class = rule_class
-        decision_source = "relative_rule_fallback"
     else:
         predicted_class = "Normal"
-        decision_source = "per_patient_isolation_forest"
+    decision_source = "per_patient_isolation_forest"
 
     # --- Population IsolationForest (from training) for observability ---
     population_anomaly_score = None
