@@ -282,7 +282,13 @@ class ModelTrainer:
         return str(ranked.iloc[0]["model"])
 
     @staticmethod
-    def _feature_importance(model, feature_names: List[str], X_train, y_train) -> pd.DataFrame:
+    def _feature_importance(
+        model,
+        feature_names: List[str],
+        X_train,
+        y_train,
+        preprocessor=None,
+    ) -> pd.DataFrame:
         try:
             if hasattr(model, "feature_importances_"):
                 imp = np.asarray(model.feature_importances_)
@@ -294,10 +300,23 @@ class ModelTrainer:
                     model, X_train, y_train, n_repeats=5, random_state=C.RANDOM_STATE, n_jobs=-1
                 )
                 imp = result.importances_mean
-            n = min(len(feature_names), len(imp))
+
+            # Prefer real post-transform column names (includes OneHot expansion of obesitycat
+            # into obesitycat_Underweight / _Normal / _Overweight / _ObeseI / _ObeseII).
+            names: List[str] = []
+            if preprocessor is not None:
+                try:
+                    names = list(preprocessor.get_feature_names_out())
+                except Exception:  # noqa: BLE001
+                    names = []
+            if len(names) != len(imp):
+                names = list(feature_names)
+                if len(names) < len(imp):
+                    names.extend([f"feature_{i}" for i in range(len(names), len(imp))])
+
             df = pd.DataFrame({
-                "feature": feature_names[:n],
-                "importance": imp[:n],
+                "feature": names[: len(imp)],
+                "importance": imp,
             }).sort_values("importance", ascending=False)
             return df
         except Exception as exc:  # noqa: BLE001
@@ -418,7 +437,9 @@ class ModelTrainer:
                     feature_metadata = json.load(f)
                 feature_metadata["best_model_name"] = best_name
 
-                fi_df = self._feature_importance(best_model, feature_names, X_train, y_train)
+                fi_df = self._feature_importance(
+                    best_model, feature_names, X_train, y_train, preprocessor=preprocessor
+                )
                 supervised_csv, unsupervised_csv, cv_csv = self._save_outputs(
                     best_name, best_model, preprocessor, unsup, feature_metadata,
                     cv_df, supervised_df, unsupervised_df, per_class_maps, rule_per_class, fi_df,

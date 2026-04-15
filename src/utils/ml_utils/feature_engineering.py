@@ -299,11 +299,37 @@ def predict_patient_alert_unsupervised(
         ],
     }
     X = build_patient_features(synthetic, meta)
-    # Inject the patient's real sys12std so downstream features use the long-history spread.
+
+    # Inject the patient's real sys12std / dia12std so downstream features use the
+    # long-history spread, then recompute everything that depends on them so the
+    # feature vector seen by the IsolationForest stays internally consistent.
     if "sys12std" in X.columns:
         X.loc[:, "sys12std"] = patient_sys_std
     if "dia12std" in X.columns:
         X.loc[:, "dia12std"] = patient_dia_std
+    if "pulse12std" in X.columns:
+        patient_pulse_std = float(history["pulse"].std(ddof=0)) if "pulse" in history else 0.0
+        X.loc[:, "pulse12std"] = patient_pulse_std
+
+    def _safe_cv(std_col: str, mean_col: str) -> float:
+        if std_col not in X.columns or mean_col not in X.columns:
+            return 0.0
+        denom = float(X[mean_col].iloc[0])
+        num = float(X[std_col].iloc[0])
+        return (num / denom * 100.0) if denom not in (0.0, None) and not np.isnan(denom) else 0.0
+
+    if "syscv12" in X.columns:
+        X.loc[:, "syscv12"] = _safe_cv("sys12std", "sys12mean")
+    if "diacv12" in X.columns:
+        X.loc[:, "diacv12"] = _safe_cv("dia12std", "dia12mean")
+
+    if "circadiandysregulationindex" in X.columns:
+        nondip = float(X["nondipperrisk"].iloc[0]) if "nondipperrisk" in X.columns else 0.0
+        X.loc[:, "circadiandysregulationindex"] = (
+            0.5 * float(X["syscv12"].iloc[0])
+            + 0.3 * float(X["diacv12"].iloc[0])
+            + 0.2 * nondip
+        )
 
     X_t = supervised_bundle["preprocessor"].transform(X)
     if hasattr(X_t, "toarray"):

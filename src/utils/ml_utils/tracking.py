@@ -9,10 +9,20 @@ config.
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
 from src.logging.logger import logging
+
+# MLflow 3.x prints emoji status lines during logging; Windows' default cp1252
+# stdout can't encode them. Reconfigure stdout/stderr to UTF-8 if possible.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
 
 try:
     from dotenv import load_dotenv
@@ -65,16 +75,23 @@ def is_enabled() -> bool:
 
 @contextmanager
 def start_run(run_name: str, nested: bool = False, tags: Optional[Dict[str, str]] = None) -> Iterator[Any]:
-    """Start an MLflow run if tracking is enabled; otherwise yield None."""
+    """Start an MLflow run if tracking is enabled; otherwise yield None.
+
+    If mlflow.start_run() fails at *entry* (auth, connection), degrade to a no-op
+    so training still succeeds. Errors inside the body propagate normally — the
+    outer mlflow context handles cleanup and re-raise.
+    """
     if not is_enabled():
         yield None
         return
     try:
-        with mlflow.start_run(run_name=run_name, nested=nested, tags=tags or {}) as run:
-            yield run
+        run_cm = mlflow.start_run(run_name=run_name, nested=nested, tags=tags or {})
     except Exception as exc:  # noqa: BLE001
-        logging.warning("mlflow.start_run(%s) failed: %s", run_name, exc)
+        logging.warning("mlflow.start_run(%s) failed to start: %s", run_name, exc)
         yield None
+        return
+    with run_cm as run:
+        yield run
 
 
 def log_params(params: Dict[str, Any]) -> None:
