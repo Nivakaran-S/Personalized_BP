@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 from src.constants import training_pipeline as C
 
@@ -374,98 +375,221 @@ def predict_patient_alert_supervised(
     return {"predicted_class": predicted_class, "probabilities": proba}
 
 
+_PERSONAL_ISO_DEMO_KEYS = [
+    "age", "gender", "bmi", "weight", "height",
+    "race_ethnicity", "education", "income_ratio",
+    "on_antihypertensive", "antihypertensive_flag", "rx_count",
+    "has_diagnosed_htn", "has_high_cholesterol",
+    "has_mi", "has_stroke", "has_heart_failure", "has_chd", "has_angina",
+    "has_diabetes",
+    "chest_pain_flag", "severe_chest_pain_flag", "sob_on_exertion_flag",
+]
+
+
+def _build_personal_feature_row(
+    systolic: float,
+    diastolic: float,
+    pulse: float,
+    sys_mean_prior: float,
+    dia_mean_prior: float,
+    sys_std_prior: float,
+    dia_std_prior: float,
+    sys_floor: float,
+    dia_floor: float,
+    demographic_context: Dict[str, Any],
+) -> List[float]:
+    """
+    Feature vector for ONE reading seen in the patient's own context.
+    Includes the reading itself (varies per row), patient-specific baseline stats,
+    z-score deviations from baseline, and the same demographic / clinical fields
+    the supervised model consumes. Demographics are constant across rows within a
+    patient — they're included so the per-patient IsoForest has the same signal
+    surface as the supervised model, even though within-patient variance only
+    comes from the BP-derived columns.
+    """
+    sys_scale = max(sys_std_prior, sys_floor)
+    dia_scale = max(dia_std_prior, dia_floor)
+    z_sys = (float(systolic) - sys_mean_prior) / (sys_scale + 1e-9)
+    z_dia = (float(diastolic) - dia_mean_prior) / (dia_scale + 1e-9)
+    dev_sys = float(systolic) - sys_mean_prior
+    dev_dia = float(diastolic) - dia_mean_prior
+
+    demo = [float(demographic_context.get(k, 0) or 0) for k in _PERSONAL_ISO_DEMO_KEYS]
+    return [
+        float(systolic), float(diastolic), float(pulse if pulse is not None else 0.0),
+        sys_mean_prior, dia_mean_prior, sys_std_prior, dia_std_prior,
+        z_sys, z_dia, dev_sys, dev_dia,
+    ] + demo
+
+
+def _fit_personal_iso_on_full_features(
+    payload: Dict[str, Any],
+    readings: list,
+    meta: Dict[str, Any],
+    preprocessor,  # kept for signature compatibility; unused in the new scheme
+):
+    """
+    Fit an IsolationForest on ONE patient's own reading history.
+
+    Each training row represents one historical reading seen against the patient's
+    running baseline (mean/std of ALL prior readings up to that point), plus the
+    demographic + clinical context. At test time the latest reading is scored
+    against a baseline built from every prior reading.
+
+    Returns (iso, feature_mask, test_row) — feature_mask selects features with
+    non-zero variance across training rows (demographics drop out naturally; BP
+    values, z-scores and deviations stay), and test_row is the feature vector
+    for the latest reading already built against the full-history baseline.
+    """
+    demo = {k: payload.get(k, 0) for k in _PERSONAL_ISO_DEMO_KEYS}
+    sys_floor = float(meta.get("sys_floor", C.SYS_FLOOR_BASE))
+    dia_floor = float(meta.get("dia_floor", C.DIA_FLOOR))
+
+    readings_df = readings_to_series(readings).astype(float)
+    readings_df = readings_df.dropna(subset=["systolic", "diastolic"]).reset_index(drop=True)
+    if len(readings_df) < 5:
+        raise ValueError(
+            "Need at least 5 valid readings (4 history + 1 latest) for the per-patient IsolationForest."
+        )
+
+    training_rows: List[List[float]] = []
+    # Build one training row per historical reading, using readings[:i] as the baseline.
+    # Start at i=2 so the running mean/std is meaningful.
+    for i in range(2, len(readings_df) - 1):
+        prior = readings_df.iloc[:i]
+        sys_mean = float(prior["systolic"].mean())
+        dia_mean = float(prior["diastolic"].mean())
+        sys_std = float(prior["systolic"].std(ddof=0))
+        dia_std = float(prior["diastolic"].std(ddof=0))
+        row_i = readings_df.iloc[i]
+        training_rows.append(_build_personal_feature_row(
+            systolic=row_i["systolic"], diastolic=row_i["diastolic"],
+            pulse=row_i["pulse"] if "pulse" in row_i else 0.0,
+            sys_mean_prior=sys_mean, dia_mean_prior=dia_mean,
+            sys_std_prior=sys_std, dia_std_prior=dia_std,
+            sys_floor=sys_floor, dia_floor=dia_floor,
+            demographic_context=demo,
+        ))
+    if len(training_rows) < 3:
+        raise ValueError(f"Only {len(training_rows)} usable training rows; need ≥3.")
+
+    X_t = np.asarray(training_rows, dtype=float)
+
+    # Variance-filter: drop constant columns so IsoForest's random splits actually separate.
+    variance = X_t.var(axis=0)
+    feature_mask = variance > 1e-9
+    if feature_mask.sum() < 2:
+        feature_mask = np.ones_like(feature_mask, dtype=bool)
+
+    # Build the test row against the FULL prior history (all but the latest reading).
+    prior = readings_df.iloc[:-1]
+    sys_mean = float(prior["systolic"].mean())
+    dia_mean = float(prior["diastolic"].mean())
+    sys_std = float(prior["systolic"].std(ddof=0))
+    dia_std = float(prior["diastolic"].std(ddof=0))
+    latest = readings_df.iloc[-1]
+    test_row = np.asarray([_build_personal_feature_row(
+        systolic=latest["systolic"], diastolic=latest["diastolic"],
+        pulse=latest["pulse"] if "pulse" in latest else 0.0,
+        sys_mean_prior=sys_mean, dia_mean_prior=dia_mean,
+        sys_std_prior=sys_std, dia_std_prior=dia_std,
+        sys_floor=sys_floor, dia_floor=dia_floor,
+        demographic_context=demo,
+    )], dtype=float)
+
+    iso = IsolationForest(
+        n_estimators=300,
+        contamination=0.25,      # more sensitive — small personal histories have tight
+        random_state=C.RANDOM_STATE,  # training distributions, so the default 0.15 misses spikes
+        n_jobs=1,
+    )
+    iso.fit(X_t[:, feature_mask])
+    return iso, feature_mask, test_row
+
+
 def predict_patient_alert_unsupervised(
     payload: Dict[str, Any],
     supervised_bundle: Dict[str, Any],
     unsupervised_bundle: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    For patients with a long BP history, run the saved IsolationForest against a
-    feature vector built from the patient's own baseline (mean/std of all readings
-    except the latest) and the latest reading. Anomalies are split into Hypo vs
-    Hyper by comparing the latest reading to the patient's own baseline (not the
-    population median), so labels are truly personalized.
-    """
-    iso = unsupervised_bundle["isolation_forest"]
+    For patients with a long BP history, fit an IsolationForest on-the-fly against
+    this patient's own readings (personal anomaly detection), then use that ML
+    decision to classify the latest reading:
 
+      - iso.predict(latest) == +1 (inlier)   → Normal
+      - iso.predict(latest) == -1 (anomaly)  → Hypertensive if latest is above the
+                                                patient's baseline, else Hypotensive
+
+    The z-score rule still runs as a cross-check and its output is returned in
+    details.rule_cross_check so callers can see when the two signals disagree.
+    The population IsolationForest in `unsupervised_bundle` is also queried for a
+    secondary `population_anomaly_score`.
+    """
     readings = payload.get("readings") or []
-    if len(readings) < 3:
-        raise ValueError("Unsupervised prediction requires at least 3 readings.")
+    if len(readings) < 5:
+        raise ValueError(
+            "Unsupervised prediction requires at least 5 readings "
+            "(need sliding 3-reading windows over the patient's history)."
+        )
 
     readings_df = readings_to_series(readings).astype(float)
-    history = readings_df.iloc[:-1]
+    history_full = readings_df.iloc[:-1]
+    history = history_full.dropna(subset=["systolic", "diastolic"])
+    if len(history) < 4:
+        raise ValueError("Need at least 4 valid prior readings for per-patient IsolationForest.")
     latest = readings_df.iloc[-1]
 
     patient_sys_mean = float(history["systolic"].mean())
     patient_dia_mean = float(history["diastolic"].mean())
     patient_sys_std = float(history["systolic"].std(ddof=0))
     patient_dia_std = float(history["diastolic"].std(ddof=0))
-    patient_pulse_mean = float(history["pulse"].mean()) if "pulse" in history else 0.0
 
     meta = supervised_bundle["feature_metadata"]
+    preprocessor = supervised_bundle["preprocessor"]
     sys_floor = float(meta.get("sys_floor", C.SYS_FLOOR_BASE))
     dia_floor = float(meta.get("dia_floor", C.DIA_FLOOR))
     sys_scale = max(patient_sys_std, sys_floor)
     dia_scale = max(patient_dia_std, dia_floor)
 
-    # Synthetic 3-reading payload that preserves the patient's own baseline.
-    synthetic = {
-        **payload,
-        "readings": [
-            {"systolic": patient_sys_mean, "diastolic": patient_dia_mean, "pulse": patient_pulse_mean},
-            {"systolic": patient_sys_mean, "diastolic": patient_dia_mean, "pulse": patient_pulse_mean},
-            {"systolic": float(latest["systolic"]), "diastolic": float(latest["diastolic"]),
-             "pulse": float(latest["pulse"]) if "pulse" in latest else patient_pulse_mean},
-        ],
-    }
-    X = build_patient_features(synthetic, meta)
+    # --- Per-patient IsolationForest on a reading-level feature vector that
+    # includes the patient's raw BP readings, baseline stats, z-deviations, AND the
+    # demographic / clinical fields the supervised model uses. Demographics are
+    # constant within a patient, so the variance-filter drops them before fitting —
+    # but they're still part of the input schema (user intent preserved).
+    personal_iso, feature_mask, test_row = _fit_personal_iso_on_full_features(
+        payload, readings, meta, preprocessor
+    )
+    X_test_masked = test_row[:, feature_mask]
+    iso_pred = int(personal_iso.predict(X_test_masked)[0])
+    anomaly_score = float(personal_iso.score_samples(X_test_masked)[0])
+    threshold_score = float(personal_iso.offset_)
+    n_iso_features = int(feature_mask.sum())
 
-    # Inject the patient's real sys12std / dia12std so downstream features use the
-    # long-history spread, then recompute everything that depends on them so the
-    # feature vector seen by the IsolationForest stays internally consistent.
-    if "sys12std" in X.columns:
-        X.loc[:, "sys12std"] = patient_sys_std
-    if "dia12std" in X.columns:
-        X.loc[:, "dia12std"] = patient_dia_std
-    if "pulse12std" in X.columns:
-        patient_pulse_std = float(history["pulse"].std(ddof=0)) if "pulse" in history else 0.0
-        X.loc[:, "pulse12std"] = patient_pulse_std
-
-    def _safe_cv(std_col: str, mean_col: str) -> float:
-        if std_col not in X.columns or mean_col not in X.columns:
-            return 0.0
-        denom = float(X[mean_col].iloc[0])
-        num = float(X[std_col].iloc[0])
-        return (num / denom * 100.0) if denom not in (0.0, None) and not np.isnan(denom) else 0.0
-
-    if "syscv12" in X.columns:
-        X.loc[:, "syscv12"] = _safe_cv("sys12std", "sys12mean")
-    if "diacv12" in X.columns:
-        X.loc[:, "diacv12"] = _safe_cv("dia12std", "dia12mean")
-
-    if "circadiandysregulationindex" in X.columns:
-        nondip = float(X["nondipperrisk"].iloc[0]) if "nondipperrisk" in X.columns else 0.0
-        X.loc[:, "circadiandysregulationindex"] = (
-            0.5 * float(X["syscv12"].iloc[0])
-            + 0.3 * float(X["diacv12"].iloc[0])
-            + 0.2 * nondip
-        )
-
-    X_t = supervised_bundle["preprocessor"].transform(X)
-    if hasattr(X_t, "toarray"):
-        X_t = X_t.toarray()
-
-    iso_pred = int(iso.predict(X_t)[0])
-    anomaly_score = float(iso.score_samples(X_t)[0])
+    # Population IsoForest score needs the preprocessor-transformed supervised-style row.
+    X_test_super_t = None
+    try:
+        super_payload = {**payload, "readings": [readings[0], readings[1], readings[-1]]}
+        X_super = build_patient_features(super_payload, meta)
+        X_test_super_t = preprocessor.transform(X_super)
+        if hasattr(X_test_super_t, "toarray"):
+            X_test_super_t = X_test_super_t.toarray()
+    except Exception:  # noqa: BLE001
+        X_test_super_t = None
 
     sy = float(latest["systolic"])
     di = float(latest["diastolic"])
     z_sys = (sy - patient_sys_mean) / (sys_scale + 1e-9)
     z_dia = (di - patient_dia_mean) / (dia_scale + 1e-9)
 
-    # Primary personalized rule: same thresholds as the supervised target, applied to the
-    # patient's own long-history baseline. This is what makes "unsupervised for long history"
-    # genuinely personalized — a population IsolationForest alone can miss patient-specific spikes.
+    # Absolute-threshold safety rails — a 88/58 reading is clinically hypotensive
+    # regardless of what the personalized ML thinks, because the patient could faint.
+    # Symmetrically for 140/90+. These override the ML decision for patient safety.
+    abs_hypo = (sy < C.HYPO_SYS_ABS) or (di < C.HYPO_DIA_ABS)
+    abs_hyper = (sy >= C.HYPER_SYS_ABS) or (di >= C.HYPER_DIA_ABS)
+
+    # Run the rule up-front so we can use it as a fallback when the ML says inlier
+    # but the relative z-score rule flagged a personal anomaly.
     row = pd.Series({
         "BPXOSY3": sy,
         "BPXODI3": di,
@@ -473,24 +597,66 @@ def predict_patient_alert_unsupervised(
         "dia12mean": patient_dia_mean,
         "sys12std": patient_sys_std,
         "dia12std": patient_dia_std,
+        "high_risk_profile": payload.get("has_diagnosed_htn", 0) or payload.get("on_antihypertensive", 0)
+            or payload.get("has_mi", 0) or payload.get("has_stroke", 0) or payload.get("has_diabetes", 0),
+        "chest_pain_flag": payload.get("chest_pain_flag", 0),
+        "severe_chest_pain_flag": payload.get("severe_chest_pain_flag", 0),
     })
-    predicted_class = make_personalized_alert_type(row, sys_floor=sys_floor, dia_floor=dia_floor)
-    if predicted_class is None:
+    rule_class = make_personalized_alert_type(row, sys_floor=sys_floor, dia_floor=dia_floor) or "Normal"
+
+    # Decision hierarchy:
+    #   1. Absolute safety rails (abs_hyper/abs_hypo) — clinical must-flags, override anything.
+    #   2. ML anomaly → use direction from patient's own baseline.
+    #   3. ML inlier but the z-score rule flagged a relative anomaly → trust the rule
+    #      (this catches the cases the IsolationForest misses with a small personal history).
+    #   4. ML inlier + rule Normal → Normal.
+    if abs_hyper:
+        predicted_class = "Hypertensive"
+        decision_source = "absolute_safety_rail"
+    elif abs_hypo:
+        predicted_class = "Hypotensive"
+        decision_source = "absolute_safety_rail"
+    elif iso_pred == -1:
+        if z_sys > 0 or z_dia > 0:
+            predicted_class = "Hypertensive"
+        else:
+            predicted_class = "Hypotensive"
+        decision_source = "per_patient_isolation_forest"
+    elif rule_class != "Normal":
+        predicted_class = rule_class
+        decision_source = "relative_rule_fallback"
+    else:
         predicted_class = "Normal"
+        decision_source = "per_patient_isolation_forest"
+
+    # --- Population IsolationForest (from training) for observability ---
+    population_anomaly_score = None
+    try:
+        pop_iso = unsupervised_bundle.get("isolation_forest") if unsupervised_bundle else None
+        if pop_iso is not None and X_test_super_t is not None:
+            population_anomaly_score = float(pop_iso.score_samples(X_test_super_t)[0])
+    except Exception:  # noqa: BLE001
+        population_anomaly_score = None
 
     return {
         "predicted_class": predicted_class,
         "probabilities": None,
         "details": {
+            "decision_source": decision_source,
             "isolation_forest_label": "anomaly" if iso_pred == -1 else "inlier",
             "anomaly_score": anomaly_score,
+            "anomaly_threshold": threshold_score,
+            "rule_cross_check": rule_class,
+            "ml_rule_agreement": predicted_class == rule_class,
             "patient_sys_mean": patient_sys_mean,
             "patient_dia_mean": patient_dia_mean,
             "patient_sys_std": patient_sys_std,
             "patient_dia_std": patient_dia_std,
             "z_sys_latest": z_sys,
             "z_dia_latest": z_dia,
-            "decision_source": "patient_baseline_z_rule",
+            "n_history": int(len(history)),
+            "n_iso_features": n_iso_features,
+            "population_anomaly_score": population_anomaly_score,
         },
     }
 

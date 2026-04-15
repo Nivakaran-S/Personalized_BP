@@ -144,7 +144,7 @@ body { background:#f6f8fb; }
             <span class="tag me-2">n = <span id="n-readings">0</span></span>
             <button class="btn btn-sm btn-outline-primary" onclick="addReading()">+ Add reading</button>
             <button class="btn btn-sm btn-outline-secondary" onclick="addMany(3)">+ 3</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="addMany(16)">+ 16 (unsupervised)</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="seedUnsupervisedDemo()">Demo unsupervised (17 readings, spike)</button>
           </div>
         </div>
         <table class="table table-sm align-middle">
@@ -220,6 +220,13 @@ function addMany(n) {
   if (diff > 0) {
     for (let i = 0; i < diff; i++) addReading(118 + Math.round(Math.random()*20), 75 + Math.round(Math.random()*10), 70 + Math.round(Math.random()*10));
   }
+}
+function seedUnsupervisedDemo() {
+  // Clear existing rows then seed 16 stable readings + 1 clear spike as the 17th,
+  // so the unsupervised path has a real anomaly to detect instead of 16 random normals.
+  document.getElementById('readings-body').innerHTML = '';
+  for (let i = 0; i < 16; i++) addReading(118 + Math.round(Math.random()*8), 76 + Math.round(Math.random()*4), 70 + Math.round(Math.random()*6));
+  addReading(150, 92, 82);  // obvious hypertensive spike
 }
 function updateCount() {
   const n = document.getElementById('readings-body').children.length;
