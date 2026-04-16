@@ -136,6 +136,18 @@ PULSE_PRESSURE_HIGH: float = 60.0
 
 MIN_READINGS_FOR_PERSONALIZATION: int = 7
 
+"""
+Pattern-based detections (deferred, now implemented)
+"""
+MORNING_SURGE_SYS_THRESHOLD: float = 20.0
+NON_DIPPER_RATIO_THRESHOLD: float = 0.9
+ORTHO_SYS_DROP: float = 20.0
+ORTHO_DIA_DROP: float = 10.0
+PREGNANCY_HIGH_SYS: float = 140.0
+PREGNANCY_HIGH_DIA: float = 90.0
+MED_TIMING_PEAK_HOURS: float = 2.0
+MED_TIMING_TROUGH_HOURS: float = 20.0
+
 NUMERIC_FEATURES = [
     "RIDAGEYR", "isfemale", "RIDRETH3", "INDFMPIR", "DMDEDUC2",
     "BMXBMI", "BMXWT", "BMXHT", "rxcount", "antihypertensiveflag",

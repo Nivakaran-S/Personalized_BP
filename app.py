@@ -117,6 +117,10 @@ class PatientPayload(BaseModel):
     sob_on_exertion_flag: int = 0
     dizziness_flag: int = Field(default=0, description="Feeling dizzy or lightheaded")
 
+    # Pregnancy + medication timing
+    is_pregnant: int = Field(default=0, description="Currently pregnant")
+    hours_since_bp_med: Optional[float] = Field(default=None, description="Hours since last BP medication dose")
+
     # Optional patient ID for physician-target lookup
     patient_id: Optional[str] = None
 
@@ -200,13 +204,18 @@ async def api_predict(payload: PatientPayload) -> Dict[str, Any]:
                 or bool(data.get("has_mi")) or bool(data.get("has_stroke"))
                 or bool(data.get("has_heart_failure")) or bool(data.get("has_diabetes"))
             ),
+            "is_pregnant": data.get("is_pregnant", 0),
+            "hours_since_bp_med": data.get("hours_since_bp_med"),
         }
 
         # Physician target override (if set for this patient).
         physician_target = PHYSICIAN_TARGETS.get(data.get("patient_id")) if data.get("patient_id") else None
 
-        # 1. Rule-based alert tier (always runs).
-        alert = evaluate_alert_tier(sys_val, dia_val, pulse_val, symptoms, patient_context, physician_target)
+        # 1. Rule-based alert tier (always runs). Pass full readings for pattern detection.
+        alert = evaluate_alert_tier(
+            sys_val, dia_val, pulse_val, symptoms, patient_context,
+            readings=data["readings"], physician_target=physician_target,
+        )
 
         # 2. ML prediction (skipped if < MIN_READINGS_FOR_PERSONALIZATION).
         n = len(data["readings"])

@@ -111,6 +111,12 @@ body { background:#f6f8fb; }
           <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="severe_chest_pain_flag"><label class="form-check-label" for="severe_chest_pain_flag">Severe chest pain (30+ min)</label></div>
           <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="sob_on_exertion_flag"><label class="form-check-label" for="sob_on_exertion_flag">Shortness of breath</label></div>
           <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="dizziness_flag"><label class="form-check-label" for="dizziness_flag">Dizziness / lightheaded</label></div>
+          <div class="col-md-12 mt-2"><strong class="small text-muted">Other</strong></div>
+          <div class="col-md-4 form-check ms-3"><input class="form-check-input" type="checkbox" id="is_pregnant"><label class="form-check-label" for="is_pregnant">Currently pregnant</label></div>
+          <div class="col-md-4">
+            <label class="form-label small">Hours since last BP med dose</label>
+            <input type="number" step="0.5" min="0" class="form-control form-control-sm" id="hours_since_bp_med" placeholder="optional" />
+          </div>
         </div>
       </div>
 
@@ -149,6 +155,10 @@ body { background:#f6f8fb; }
             <span class="badge badge-tier" id="tier-badge">—</span>
             <span class="tag ms-2" id="personalization-badge">—</span>
             <span class="tag" id="pp-badge" style="display:none">—</span>
+            <span class="tag" id="ms-badge" style="display:none">—</span>
+            <span class="tag" id="nd-badge" style="display:none">—</span>
+            <span class="tag" id="ort-badge" style="display:none">—</span>
+            <span class="tag" id="mt-badge" style="display:none">—</span>
           </div>
 
           <div id="personalization-msg" class="text-muted small mb-2" style="display:none"></div>
@@ -266,6 +276,8 @@ function collectPayload() {
     has_angina: checkVal('has_angina'), has_diabetes: checkVal('has_diabetes'),
     chest_pain_flag: checkVal('chest_pain_flag'), severe_chest_pain_flag: checkVal('severe_chest_pain_flag'),
     sob_on_exertion_flag: checkVal('sob_on_exertion_flag'), dizziness_flag: checkVal('dizziness_flag'),
+    is_pregnant: checkVal('is_pregnant'),
+    hours_since_bp_med: parseFloat(document.getElementById('hours_since_bp_med').value) || null,
     readings,
   };
 }
@@ -297,6 +309,16 @@ function renderResult(d) {
   const ppBadge = document.getElementById('pp-badge');
   if (d.pulse_pressure_flag) { ppBadge.textContent = `PP ${d.pulse_pressure} (high)`; ppBadge.style.display = 'inline'; ppBadge.style.background = '#fee2e2'; ppBadge.style.color = '#991b1b'; }
   else { ppBadge.style.display = 'none'; }
+
+  function showFlagBadge(id, flag, text, bg, fg) {
+    const el = document.getElementById(id);
+    if (flag) { el.textContent = text; el.style.display = 'inline'; el.style.background = bg; el.style.color = fg; }
+    else { el.style.display = 'none'; }
+  }
+  showFlagBadge('ms-badge', d.morning_surge_flag, `Morning surge +${d.morning_surge_delta||0}`, '#fef3c7', '#92400e');
+  showFlagBadge('nd-badge', d.non_dipper_flag, `Non-dipper (${(d.non_dipper_ratio||0).toFixed(2)})`, '#ede9fe', '#5b21b6');
+  showFlagBadge('ort-badge', d.orthostatic_flag, `Orthostatic drop ${d.orthostatic_sys_drop||0}/${d.orthostatic_dia_drop||0}`, '#fce7f3', '#9d174d');
+  showFlagBadge('mt-badge', !!d.med_timing_note, d.med_timing_note||'', '#e0f2fe', '#075985');
 
   document.getElementById('msg-patient').textContent = d.messages?.patient || '—';
   document.getElementById('msg-caregiver').textContent = d.messages?.caregiver || '—';

@@ -89,3 +89,23 @@ alert_tiers:
 routing:
   min_readings_for_personalization: 7
   unsupervised_threshold: 15
+
+pattern_flags:
+  - flag: MORNING_SURGE
+    trigger: "morning max systolic - evening/night mean systolic >= 20 mmHg"
+    requires: ">= 1 morning + >= 1 evening/night reading with time_of_day tagged"
+  - flag: NON_DIPPER
+    trigger: "night mean systolic / day mean systolic > 0.9 (less than 10% nocturnal dip)"
+    requires: ">= 1 daytime + >= 1 nighttime reading with time_of_day tagged"
+  - flag: ORTHOSTATIC_HYPOTENSION
+    trigger: "seated/lying vs standing: systolic drop >= 20 OR diastolic drop >= 10"
+    requires: ">= 1 seated/lying + >= 1 standing reading with position tagged"
+  - flag: PULSE_PRESSURE_HIGH
+    trigger: "systolic - diastolic > 60 mmHg"
+  - flag: MED_TIMING_NOTE
+    trigger: "hours_since_bp_med <= 2 (peak) or >= 20 (trough)"
+    type: "informational (physician context, not an alert)"
+
+pregnancy:
+  adjustment: "When is_pregnant=1, HIGH tier fires at 140/90 regardless of risk profile"
+  physician_note: "Evaluate for pre-eclampsia. Consider urine protein and liver function."
