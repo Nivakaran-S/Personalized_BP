@@ -119,6 +119,23 @@ SYMPTOM_BUMP_DIA_CUTOFF: float = 75.0
 Z_LOW: float = -1.0
 Z_HIGH: float = 1.0
 
+"""
+Alert-tier thresholds (rule-based, always evaluated before ML)
+"""
+CRISIS_SYS: float = 180.0
+CRISIS_DIA: float = 120.0
+CRISIS_SYMPTOMS = ["chest_pain_flag", "severe_chest_pain_flag", "sob_on_exertion_flag"]
+
+CRITICAL_LOW_SYS: float = 70.0
+CRITICAL_LOW_DIA: float = 40.0
+
+ELEVATED_SYS_RANGE = (130.0, 139.0)
+ELEVATED_DIA_RANGE = (80.0, 89.0)
+
+PULSE_PRESSURE_HIGH: float = 60.0
+
+MIN_READINGS_FOR_PERSONALIZATION: int = 7
+
 NUMERIC_FEATURES = [
     "RIDAGEYR", "isfemale", "RIDRETH3", "INDFMPIR", "DMDEDUC2",
     "BMXBMI", "BMXWT", "BMXHT", "rxcount", "antihypertensiveflag",
@@ -135,6 +152,7 @@ NUMERIC_FEATURES = [
     "has_mi", "has_stroke", "has_heart_failure", "has_chd", "has_angina",
     "has_diabetes",
     "cardiac_history_count", "acute_symptom_count", "high_risk_profile",
+    "dizziness_flag",
 ]
 CATEGORICAL_FEATURES = ["obesitycat"]
 

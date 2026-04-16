@@ -93,6 +93,11 @@ def _add_clinical_flags(out: pd.DataFrame) -> pd.DataFrame:
         "MCQ160F": "has_stroke",
         "DIQ010":  "has_diabetes",
     }
+    # dizziness_flag has no NHANES source code — it's an inference-only input
+    # from the patient. Ensure it exists with a default of 0.
+    if "dizziness_flag" not in out.columns:
+        out["dizziness_flag"] = 0
+    out["dizziness_flag"] = _binary_flag(out["dizziness_flag"])
     for src, dst in code_to_flag.items():
         if src in out.columns:
             out[dst] = _binary_flag(out[src])
@@ -331,6 +336,7 @@ def build_patient_features(payload: Dict[str, Any], feature_metadata: Dict[str, 
         "MCQ160E": payload.get("has_mi", 0),
         "MCQ160F": payload.get("has_stroke", 0),
         "DIQ010":  payload.get("has_diabetes", 0),
+        "dizziness_flag": payload.get("dizziness_flag", 0),
     }
     df = pd.DataFrame([row])
     df = engineer_features(df, feature_metadata.get("dryad_stats", C.DRYAD_DEFAULTS))
@@ -383,6 +389,7 @@ _PERSONAL_ISO_DEMO_KEYS = [
     "has_mi", "has_stroke", "has_heart_failure", "has_chd", "has_angina",
     "has_diabetes",
     "chest_pain_flag", "severe_chest_pain_flag", "sob_on_exertion_flag",
+    "dizziness_flag",
 ]
 
 
@@ -646,19 +653,30 @@ def predict_patient_alert_unsupervised(
 
 def predict_patient_alert(
     payload: Dict[str, Any],
-    supervised_bundle: Dict[str, Any],
-    unsupervised_bundle: Dict[str, Any],
-    threshold: int = C.UNSUPERVISED_READINGS_THRESHOLD,
-) -> Dict[str, Any]:
-    """Router: >threshold readings → unsupervised model, else supervised."""
+    supervised_bundle: Optional[Dict[str, Any]],
+    unsupervised_bundle: Optional[Dict[str, Any]],
+    min_for_personalization: int = C.MIN_READINGS_FOR_PERSONALIZATION,
+    unsupervised_threshold: int = C.UNSUPERVISED_READINGS_THRESHOLD,
+) -> Optional[Dict[str, Any]]:
+    """
+    Three-tier routing:
+      < min_for_personalization  → None (rule-only, ML skipped)
+      min..unsupervised_threshold → supervised ML
+      > unsupervised_threshold    → per-patient IsolationForest
+    Returns None when readings are too few for personalization (caller uses rule tier only).
+    """
     readings = payload.get("readings") or []
     n = len(readings)
-    if n > threshold and unsupervised_bundle is not None and supervised_bundle is not None:
+
+    if n < min_for_personalization:
+        return None  # rule-only; caller shows "collecting baseline"
+
+    if n > unsupervised_threshold and unsupervised_bundle is not None and supervised_bundle is not None:
         result = predict_patient_alert_unsupervised(payload, supervised_bundle, unsupervised_bundle)
         result["model_used"] = "unsupervised"
     else:
         if supervised_bundle is None:
-            raise ValueError("Supervised model not loaded.")
+            return None
         result = predict_patient_alert_supervised(payload, supervised_bundle)
         result["model_used"] = "supervised"
         result.setdefault("details", {})

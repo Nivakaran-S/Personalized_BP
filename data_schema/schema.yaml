@@ -61,3 +61,31 @@ target:
     - Hypotensive
     - Normal
     - Hypertensive
+
+alert_tiers:
+  # Rule-based tiers evaluated BEFORE the ML model (ordered by severity)
+  - tier: CRISIS
+    trigger: "sys >= 180 OR dia >= 120, AND acute symptom present"
+    action: "Call 911"
+  - tier: URGENCY
+    trigger: "sys >= 180 OR dia >= 120, no symptoms"
+    action: "Call physician within hours"
+  - tier: CRITICAL_LOW
+    trigger: "sys < 70 OR dia < 40, OR (sys < 90 AND on meds AND dizzy)"
+    action: "Sit/lie down, call physician"
+  - tier: LOW
+    trigger: "sys < 90 OR dia < 60"
+    action: "Monitor, rest"
+  - tier: HIGH
+    trigger: "sys >= 140 OR dia >= 90 (or risk-aware thresholds)"
+    action: "Rest 5 min, re-measure, contact physician if persistent"
+  - tier: ELEVATED
+    trigger: "sys 130-139 OR dia 80-89"
+    action: "Monitor, re-measure later"
+  - tier: NORMAL
+    trigger: "sys 90-129 AND dia 60-79"
+    action: "No action"
+
+routing:
+  min_readings_for_personalization: 7
+  unsupervised_threshold: 15
