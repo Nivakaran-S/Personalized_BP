@@ -2,216 +2,190 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Healplace Cardio — BP Alert</title>
+<title>HealPlace Cardio — BP Alert</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
 <style>
 body { background:#f6f8fb; }
 .card { border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
-.prob-row { display:flex; align-items:center; gap:10px; margin:.2rem 0; }
-.prob-label { width:100px; font-size:.85rem; }
-.prob-bar { flex:1; background:#e9ecef; border-radius:6px; height:16px; }
-.prob-bar > span { display:block; height:100%; border-radius:6px; }
-.prob-bar.Hypertensive > span { background:#dc3545; }
-.prob-bar.Hypotensive > span { background:#ffc107; }
-.prob-bar.Normal > span { background:#198754; }
-.prob-value { width:55px; text-align:right; font-variant-numeric:tabular-nums; font-size:.85rem; }
-.badge-tier { font-size:1.1rem; padding:.5em .9em; }
-.tag { font-size:.72rem; padding:.15rem .4rem; border-radius:4px; background:#eef2ff; color:#4338ca; }
-.tier-CRISIS { background:#dc3545; color:#fff; }
-.tier-URGENCY { background:#fd7e14; color:#fff; }
-.tier-CRITICAL_LOW { background:#212529; color:#fff; }
-.tier-LOW { background:#6f42c1; color:#fff; }
-.tier-HIGH { background:#ffc107; color:#212529; }
-.tier-ELEVATED { background:#0d6efd; color:#fff; }
-.tier-NORMAL { background:#198754; color:#fff; }
-.msg-card { font-size:.88rem; border-left:3px solid #6c757d; padding:8px 12px; margin-bottom:6px; background:#fafafa; border-radius:4px; }
+.section-title { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:#475569; margin-top:.75rem; margin-bottom:.25rem; font-weight:600; }
+.tier-badge { font-size:1rem; padding:.45em .9em; border-radius:999px; font-weight:600; }
+.tier-LEVEL_2     { background:#dc2626; color:#fff; }
+.tier-LEVEL_1_HIGH { background:#f97316; color:#fff; }
+.tier-LEVEL_1_LOW { background:#7c3aed; color:#fff; }
+.tier-STAGE_2     { background:#eab308; color:#1a1a1a; }
+.tier-STAGE_1     { background:#60a5fa; color:#0b2544; }
+.tier-ELEVATED    { background:#bfdbfe; color:#0b2544; }
+.tier-NORMAL      { background:#16a34a; color:#fff; }
+.push-bell { font-size:1.25rem; margin-left:.35rem; }
+.chip { display:inline-block; font-size:.72rem; padding:.2rem .5rem; border-radius:999px; background:#e5e7eb; color:#1f2937; margin:.1rem .15rem .1rem 0; }
+.chip.red     { background:#fee2e2; color:#991b1b; }
+.chip.yellow  { background:#fef3c7; color:#92400e; }
+.chip.purple  { background:#ede9fe; color:#5b21b6; }
+.chip.sky     { background:#e0f2fe; color:#075985; }
+.banner { border-left:4px solid #dc2626; background:#fef2f2; padding:.5rem .75rem; border-radius:4px; margin-bottom:.5rem; }
+.banner.warn { border-left-color:#eab308; background:#fefce8; }
+.msg-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.6rem .75rem; font-size:.88rem; }
+.checklist-row .form-check { margin-right:0; }
 </style>
 </head>
 <body>
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-      <h3 class="mb-0">Healplace Cardio</h3>
-      <small class="text-muted">Personalized BP alerts. Rule tiers + ML prediction.</small>
+      <h3 class="mb-0">HealPlace Cardio — BP Alert</h3>
+      <small class="text-muted">Rule-based personalized alerts (AHA/ACC 2025 + clinical sign-off by Dr. Manisha Singal)</small>
     </div>
     <span id="health-badge" class="badge bg-secondary">checking…</span>
   </div>
 
   <div class="row g-3">
-    <div class="col-lg-7">
-
-      <div class="card p-4 mb-3">
-        <h5>Patient details</h5>
+    <!-- LEFT: Patient details + conditions + meds + checklist -->
+    <div class="col-lg-4">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Patient</h6>
         <div class="row g-2">
-          <div class="col-md-4"><label class="form-label">Age</label><input type="number" class="form-control" id="age" value="55" /></div>
-          <div class="col-md-4">
-            <label class="form-label">Gender</label>
-            <select class="form-select" id="gender"><option value="1">Male</option><option value="2" selected>Female</option></select>
-          </div>
-          <div class="col-md-4"><label class="form-label">Weight (kg)</label><input type="number" step="0.1" class="form-control" id="weight" value="70" /></div>
-          <div class="col-md-4"><label class="form-label">Height (cm)</label><input type="number" step="0.1" class="form-control" id="height" value="160" /></div>
-          <div class="col-md-4">
-            <label class="form-label">BMI</label>
-            <input type="number" step="0.1" class="form-control" id="bmi" readonly />
-            <small class="text-muted">Auto-calculated.</small>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Race / ethnicity</label>
-            <select class="form-select" id="race_ethnicity">
-              <option value="1">Mexican American</option><option value="2">Other Hispanic</option>
-              <option value="3" selected>Non-Hispanic White</option><option value="4">Non-Hispanic Black</option>
-              <option value="6">Non-Hispanic Asian</option><option value="7">Other / Multi-racial</option>
+          <div class="col-6"><label class="form-label small">Age</label><input type="number" class="form-control form-control-sm" id="age" value="55" /></div>
+          <div class="col-6">
+            <label class="form-label small">Gender</label>
+            <select class="form-select form-select-sm" id="gender">
+              <option value="1">Male</option>
+              <option value="2" selected>Female</option>
             </select>
           </div>
-          <div class="col-md-4">
-            <label class="form-label">Education</label>
-            <select class="form-select" id="education">
-              <option value="1">Less than 9th grade</option><option value="2">9–11th grade</option>
-              <option value="3" selected>High-school / GED</option><option value="4">Some college / AA</option>
-              <option value="5">College graduate+</option>
-            </select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Income-to-poverty ratio</label>
-            <input type="number" step="0.01" class="form-control" id="income_ratio" value="2.5" />
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Prescription count</label>
-            <input type="number" step="1" class="form-control" id="rx_count" value="0" min="0" />
-          </div>
+          <div class="col-12"><label class="form-label small">Patient ID (optional)</label><input type="text" class="form-control form-control-sm" id="patient_id" placeholder="for physician-target lookup" /></div>
+        </div>
+        <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="is_pregnant"><label class="form-check-label small" for="is_pregnant">Currently pregnant</label></div>
+      </div>
+
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Cardiac conditions</h6>
+        <div class="row g-1 checklist-row">
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_hypertension"><label class="form-check-label small" for="has_hypertension">Hypertension</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_hfref"><label class="form-check-label small" for="has_hfref">HFrEF</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_hfpef"><label class="form-check-label small" for="has_hfpef">HFpEF</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_hcm"><label class="form-check-label small" for="has_hcm">HCM</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_dcm"><label class="form-check-label small" for="has_dcm">DCM</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_cad"><label class="form-check-label small" for="has_cad">CAD</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_afib"><label class="form-check-label small" for="has_afib">AFib</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_tachycardia"><label class="form-check-label small" for="has_tachycardia">Tachycardia</label></div>
+          <div class="col-6 form-check"><input class="form-check-input" type="checkbox" id="has_bradycardia"><label class="form-check-label small" for="has_bradycardia">Bradycardia</label></div>
         </div>
       </div>
 
-      <div class="card p-4 mb-3">
-        <h5>Clinical history & symptoms</h5>
-        <small class="text-muted d-block mb-2">All default to No.</small>
-        <div class="row g-2">
-          <div class="col-md-4">
-            <label class="form-label">Diagnosed high BP?</label>
-            <select class="form-select" id="has_diagnosed_htn"><option value="0" selected>No</option><option value="1">Yes</option></select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">On BP medication?</label>
-            <select class="form-select" id="on_antihypertensive"><option value="0" selected>No</option><option value="1">Yes</option></select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">High cholesterol?</label>
-            <select class="form-select" id="has_high_cholesterol"><option value="0" selected>No</option><option value="1">Yes</option></select>
-          </div>
-          <div class="col-md-12 mt-2"><strong class="small text-muted">Cardiac history</strong></div>
-          <div class="col-md-4 form-check ms-3"><input class="form-check-input" type="checkbox" id="has_mi"><label class="form-check-label" for="has_mi">Heart attack</label></div>
-          <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" id="has_stroke"><label class="form-check-label" for="has_stroke">Stroke</label></div>
-          <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="has_heart_failure"><label class="form-check-label" for="has_heart_failure">Heart failure</label></div>
-          <div class="col-md-4 form-check ms-3"><input class="form-check-input" type="checkbox" id="has_chd"><label class="form-check-label" for="has_chd">Coronary heart disease</label></div>
-          <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" id="has_angina"><label class="form-check-label" for="has_angina">Angina</label></div>
-          <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="has_diabetes"><label class="form-check-label" for="has_diabetes">Diabetes</label></div>
-          <div class="col-md-12 mt-2"><strong class="small text-muted">Acute symptoms (right now)</strong></div>
-          <div class="col-md-3 form-check ms-3"><input class="form-check-input" type="checkbox" id="chest_pain_flag"><label class="form-check-label" for="chest_pain_flag">Chest pain</label></div>
-          <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="severe_chest_pain_flag"><label class="form-check-label" for="severe_chest_pain_flag">Severe chest pain (30+ min)</label></div>
-          <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="sob_on_exertion_flag"><label class="form-check-label" for="sob_on_exertion_flag">Shortness of breath</label></div>
-          <div class="col-md-3 form-check"><input class="form-check-input" type="checkbox" id="dizziness_flag"><label class="form-check-label" for="dizziness_flag">Dizziness / lightheaded</label></div>
-          <div class="col-md-12 mt-2"><strong class="small text-muted">Other</strong></div>
-          <div class="col-md-4 form-check ms-3"><input class="form-check-input" type="checkbox" id="is_pregnant"><label class="form-check-label" for="is_pregnant">Currently pregnant</label></div>
-          <div class="col-md-4">
-            <label class="form-label small">Hours since last BP med dose</label>
-            <input type="number" step="0.5" min="0" class="form-control form-control-sm" id="hours_since_bp_med" placeholder="optional" />
-          </div>
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Medications</h6>
+        <div class="row g-1 checklist-row">
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="on_ace_or_arb"><label class="form-check-label small" for="on_ace_or_arb">ACE inhibitor / ARB</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="on_beta_blocker"><label class="form-check-label small" for="on_beta_blocker">Beta-blocker</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="on_loop_diuretic"><label class="form-check-label small" for="on_loop_diuretic">Loop diuretic</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="on_nondhp_ccb"><label class="form-check-label small" for="on_nondhp_ccb">Non-DHP CCB (diltiazem / verapamil)</label></div>
+          <div class="col-12 mt-2"><label class="form-label small">Hours since last BP dose (optional)</label><input type="number" step="0.5" min="0" class="form-control form-control-sm" id="hours_since_bp_med" placeholder="optional" /></div>
         </div>
       </div>
 
-      <div class="card p-4 mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h5 class="mb-0">BP readings</h5>
-          <div>
-            <span class="tag me-2">n = <span id="n-readings">0</span></span>
-            <button class="btn btn-sm btn-outline-primary" onclick="addReading()">+ Add</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="addMany(3)">+ 3</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="seedUnsupervisedDemo()">Demo unsupervised</button>
-          </div>
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Pre-measurement checklist</h6>
+        <small class="text-muted d-block mb-2">Uncheck any that weren't met. Readings still count — they're just flagged as suboptimal.</small>
+        <div class="row g-1 checklist-row">
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="no_caffeine" checked><label class="form-check-label small" for="no_caffeine">No caffeine in last 30 min</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="no_smoking" checked><label class="form-check-label small" for="no_smoking">No smoking in last 30 min</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="no_exercise" checked><label class="form-check-label small" for="no_exercise">No exercise in last 30 min</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="bladder_empty" checked><label class="form-check-label small" for="bladder_empty">Bladder emptied</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="seated_5min" checked><label class="form-check-label small" for="seated_5min">Seated quietly 5+ min</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="proper_posture" checked><label class="form-check-label small" for="proper_posture">Proper posture (back supported, feet flat)</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="not_talking" checked><label class="form-check-label small" for="not_talking">Not talking during measurement</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="cuff_bare_arm" checked><label class="form-check-label small" for="cuff_bare_arm">Cuff on bare upper arm</label></div>
         </div>
-        <table class="table table-sm align-middle">
-          <thead><tr><th>#</th><th>Systolic</th><th>Diastolic</th><th>Pulse</th><th>Time of day</th><th>Position</th><th></th></tr></thead>
-          <tbody id="readings-body"></tbody>
-        </table>
-        <small class="text-muted">
-          &lt; {{ min_personalization }} readings → rule-only (AHA standard). {{ min_personalization }}–{{ threshold }} → supervised ML. &gt; {{ threshold }} → per-patient IsolationForest.
-        </small>
-      </div>
-
-      <div class="d-flex gap-2">
-        <button class="btn btn-primary" onclick="predict()">Predict</button>
-        <button class="btn btn-outline-dark" onclick="train()">Run training pipeline</button>
       </div>
     </div>
 
-    <div class="col-lg-5">
-
-      <div class="card p-4 mb-3">
-        <h5>Alert result</h5>
-        <div id="result-empty" class="text-muted">Submit a prediction to see the alert.</div>
-        <div id="result" style="display:none">
-          <div class="mb-2">
-            <span class="badge badge-tier" id="tier-badge">—</span>
-            <span class="tag ms-2" id="personalization-badge">—</span>
-            <span class="tag" id="pp-badge" style="display:none">—</span>
-            <span class="tag" id="ms-badge" style="display:none">—</span>
-            <span class="tag" id="nd-badge" style="display:none">—</span>
-            <span class="tag" id="ort-badge" style="display:none">—</span>
-            <span class="tag" id="mt-badge" style="display:none">—</span>
+    <!-- CENTER: Readings + predict -->
+    <div class="col-lg-4">
+      <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0">BP readings</h6>
+          <div>
+            <span class="chip">n = <span id="n-readings">0</span></span>
+            <button class="btn btn-sm btn-outline-primary" onclick="addReading()">+ Reading</button>
           </div>
+        </div>
+        <small class="text-muted d-block mb-2">Last 3 readings are averaged for the alert decision. Tag time-of-day / position for pattern flags.</small>
+        <table class="table table-sm align-middle">
+          <thead><tr><th>#</th><th>Sys</th><th>Dia</th><th>Pulse</th><th>When</th><th>Pos</th><th></th></tr></thead>
+          <tbody id="readings-body"></tbody>
+        </table>
+      </div>
 
-          <div id="personalization-msg" class="text-muted small mb-2" style="display:none"></div>
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Physician target (optional)</h6>
+        <small class="text-muted d-block mb-2">If set, Level 1 High fires at <i>target + 20</i>.</small>
+        <div class="row g-2">
+          <div class="col-4"><label class="form-label small">Target sys</label><input type="number" class="form-control form-control-sm" id="pt_target_sys" placeholder="e.g. 130" /></div>
+          <div class="col-4"><label class="form-label small">Target dia</label><input type="number" class="form-control form-control-sm" id="pt_target_dia" placeholder="e.g. 80" /></div>
+          <div class="col-4"><label class="form-label small">Lower sys</label><input type="number" class="form-control form-control-sm" id="pt_lower_sys" placeholder="e.g. 90" /></div>
+          <div class="col-12"><button class="btn btn-sm btn-outline-secondary" onclick="saveTarget()">Save target</button></div>
+        </div>
+        <div id="target-save-status" class="small text-muted mt-1"></div>
+      </div>
 
-          <details class="mb-2" open>
-            <summary class="fw-bold small">Patient guidance</summary>
-            <div class="msg-card" id="msg-patient"></div>
-          </details>
-          <details class="mb-2">
-            <summary class="fw-bold small">Caregiver guidance</summary>
-            <div class="msg-card" id="msg-caregiver"></div>
-          </details>
-          <details class="mb-2">
-            <summary class="fw-bold small">Physician summary</summary>
-            <div class="msg-card" id="msg-physician"></div>
-          </details>
+      <button class="btn btn-primary w-100" onclick="predict()">Evaluate alert</button>
+    </div>
 
-          <details class="mb-2">
-            <summary class="fw-bold small">ML prediction</summary>
-            <div id="ml-section" class="mt-1">
-              <span class="tag" id="ml-model-used">—</span>
-              <span class="badge bg-secondary ms-1" id="ml-class-badge">—</span>
-              <div id="ml-probabilities" class="mt-1"></div>
-            </div>
-          </details>
-
-          <details>
-            <summary class="text-muted small">Raw details</summary>
-            <pre id="details" class="small bg-light p-2 rounded mt-1" style="white-space:pre-wrap;max-height:200px;overflow:auto"></pre>
-          </details>
+    <!-- RIGHT: Symptoms + result -->
+    <div class="col-lg-4">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Level 2 symptoms</h6>
+        <small class="text-muted d-block mb-2">Any of these → LEVEL 2 alert regardless of BP.</small>
+        <div class="row g-1 checklist-row">
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="severe_headache_flag"><label class="form-check-label small" for="severe_headache_flag">Severe headache</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="visual_changes_flag"><label class="form-check-label small" for="visual_changes_flag">Visual changes</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="altered_mental_flag"><label class="form-check-label small" for="altered_mental_flag">Altered mental status / confusion</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="chest_pain_flag"><label class="form-check-label small" for="chest_pain_flag">Chest pain</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="acute_dyspnea_flag"><label class="form-check-label small" for="acute_dyspnea_flag">Acute shortness of breath</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="focal_neuro_flag"><label class="form-check-label small" for="focal_neuro_flag">Focal neurological deficit</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="severe_epigastric_flag"><label class="form-check-label small" for="severe_epigastric_flag">Severe epigastric / RUQ pain</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="dizziness_flag"><label class="form-check-label small" for="dizziness_flag">Dizziness / lightheaded</label></div>
+        </div>
+        <div class="section-title mt-2">Pregnancy-only</div>
+        <div class="row g-1 checklist-row">
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="new_headache_flag"><label class="form-check-label small" for="new_headache_flag">New headache</label></div>
+          <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="edema_flag"><label class="form-check-label small" for="edema_flag">Sudden edema</label></div>
         </div>
       </div>
 
-      <div class="card p-4">
-        <h5>Training</h5>
-        <div id="train-status" class="text-muted small">Idle.</div>
-        <pre id="train-output" class="small bg-light p-2 rounded mt-2" style="max-height:200px;overflow:auto;display:none"></pre>
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold mb-2">Result</h6>
+        <div id="result-empty" class="text-muted small">Submit readings to see the alert.</div>
+        <div id="result" style="display:none">
+          <div class="mb-2">
+            <span class="tier-badge" id="tier-badge">—</span>
+            <span id="push-bell" class="push-bell" title="Push alert">🔔</span>
+          </div>
+          <div id="applied-reading" class="small text-muted mb-2"></div>
+          <div id="age-context" class="small text-muted mb-2"></div>
+
+          <div id="contraindications-banner" style="display:none"></div>
+          <div id="mandatory-banner" class="banner warn small" style="display:none"></div>
+          <div id="protocol-note" class="small text-muted mb-2"></div>
+
+          <div class="mb-2" id="chips-row"></div>
+
+          <details open class="mb-2"><summary class="fw-bold small">Patient guidance</summary><div class="msg-card" id="msg-patient"></div></details>
+          <details class="mb-2"><summary class="fw-bold small">Caregiver guidance</summary><div class="msg-card" id="msg-caregiver"></div></details>
+          <details class="mb-2"><summary class="fw-bold small">Physician summary</summary><div class="msg-card" id="msg-physician"></div></details>
+
+          <details class="mt-2"><summary class="small text-muted">Applied thresholds + contributing factors</summary>
+            <div id="thresholds-block" class="small text-muted mt-2" style="white-space:pre-wrap"></div>
+            <ul id="factors-list" class="small text-muted mt-2 mb-0"></ul>
+          </details>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-const CLASS_ORDER = {{ class_order | tojson }};
-const THRESHOLD = {{ threshold }};
-const MIN_PERS = {{ min_personalization }};
-
-function recalcBmi() {
-  const w = parseFloat(document.getElementById('weight').value);
-  const h = parseFloat(document.getElementById('height').value);
-  document.getElementById('bmi').value = (w > 0 && h > 0) ? (w / Math.pow(h / 100, 2)).toFixed(1) : '';
-}
-
 function addReading(sys = 120, dia = 80, pulse = 72, tod = '', pos = '') {
   const body = document.getElementById('readings-body');
   const idx = body.children.length + 1;
@@ -221,161 +195,157 @@ function addReading(sys = 120, dia = 80, pulse = 72, tod = '', pos = '') {
     <td><input type="number" class="form-control form-control-sm sys" value="${sys}"></td>
     <td><input type="number" class="form-control form-control-sm dia" value="${dia}"></td>
     <td><input type="number" class="form-control form-control-sm pul" value="${pulse}"></td>
-    <td><select class="form-select form-select-sm tod">
-      <option value="">—</option><option value="morning"${tod==='morning'?' selected':''}>Morning</option>
-      <option value="afternoon"${tod==='afternoon'?' selected':''}>Afternoon</option>
-      <option value="evening"${tod==='evening'?' selected':''}>Evening</option>
-      <option value="night"${tod==='night'?' selected':''}>Night</option>
-    </select></td>
-    <td><select class="form-select form-select-sm pos">
-      <option value="">—</option><option value="sitting"${pos==='sitting'?' selected':''}>Sitting</option>
-      <option value="standing"${pos==='standing'?' selected':''}>Standing</option>
-      <option value="lying"${pos==='lying'?' selected':''}>Lying</option>
-    </select></td>
-    <td><button class="btn btn-sm btn-outline-danger" onclick="removeReading(this)">&times;</button></td>`;
+    <td><select class="form-select form-select-sm tod"><option value="">—</option>
+        <option value="morning"${tod==='morning'?' selected':''}>Morning</option>
+        <option value="afternoon"${tod==='afternoon'?' selected':''}>Afternoon</option>
+        <option value="evening"${tod==='evening'?' selected':''}>Evening</option>
+        <option value="night"${tod==='night'?' selected':''}>Night</option></select></td>
+    <td><select class="form-select form-select-sm pos"><option value="">—</option>
+        <option value="sitting"${pos==='sitting'?' selected':''}>Sitting</option>
+        <option value="standing"${pos==='standing'?' selected':''}>Standing</option>
+        <option value="lying"${pos==='lying'?' selected':''}>Lying</option></select></td>
+    <td><button class="btn btn-sm btn-outline-danger" onclick="removeReading(this)">×</button></td>`;
   body.appendChild(tr);
   updateCount();
 }
 function removeReading(btn) { btn.closest('tr').remove(); reindex(); updateCount(); }
 function reindex() { [...document.querySelectorAll('#readings-body tr')].forEach((tr, i) => tr.firstElementChild.textContent = i + 1); }
-function addMany(n) { const cur = document.getElementById('readings-body').children.length; for (let i = 0; i < n - cur; i++) addReading(118+Math.round(Math.random()*20), 75+Math.round(Math.random()*10), 70+Math.round(Math.random()*10)); }
-function seedUnsupervisedDemo() {
-  document.getElementById('readings-body').innerHTML = '';
-  for (let i = 0; i < 16; i++) addReading(118+Math.round(Math.random()*8), 76+Math.round(Math.random()*4), 70+Math.round(Math.random()*6));
-  addReading(150, 92, 82);
-}
-function updateCount() { document.getElementById('n-readings').textContent = document.getElementById('readings-body').children.length; }
-
-function selectVal(id) { const el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; }
-function checkVal(id) { const el = document.getElementById(id); return el && el.checked ? 1 : 0; }
+function updateCount() { document.getElementById('n-readings').textContent = document.querySelectorAll('#readings-body tr').length; }
+function cb(id) { const el = document.getElementById(id); return el && el.checked ? 1 : 0; }
 function collectPayload() {
   const readings = [...document.querySelectorAll('#readings-body tr')].map(tr => ({
     systolic: parseFloat(tr.querySelector('.sys').value),
     diastolic: parseFloat(tr.querySelector('.dia').value),
-    pulse: parseFloat(tr.querySelector('.pul').value),
+    pulse: parseFloat(tr.querySelector('.pul').value) || null,
     time_of_day: tr.querySelector('.tod').value || null,
     position: tr.querySelector('.pos').value || null,
   }));
-  const bmiVal = parseFloat(document.getElementById('bmi').value);
   return {
     age: parseFloat(document.getElementById('age').value),
     gender: parseInt(document.getElementById('gender').value),
-    bmi: isNaN(bmiVal) ? null : bmiVal,
-    weight: parseFloat(document.getElementById('weight').value),
-    height: parseFloat(document.getElementById('height').value),
-    race_ethnicity: parseInt(document.getElementById('race_ethnicity').value),
-    education: parseInt(document.getElementById('education').value),
-    income_ratio: parseFloat(document.getElementById('income_ratio').value),
-    on_antihypertensive: selectVal('on_antihypertensive'),
-    antihypertensive_flag: selectVal('on_antihypertensive'),
-    rx_count: parseFloat(document.getElementById('rx_count').value) || 0,
-    has_diagnosed_htn: selectVal('has_diagnosed_htn'),
-    has_high_cholesterol: selectVal('has_high_cholesterol'),
-    has_mi: checkVal('has_mi'), has_stroke: checkVal('has_stroke'),
-    has_heart_failure: checkVal('has_heart_failure'), has_chd: checkVal('has_chd'),
-    has_angina: checkVal('has_angina'), has_diabetes: checkVal('has_diabetes'),
-    chest_pain_flag: checkVal('chest_pain_flag'), severe_chest_pain_flag: checkVal('severe_chest_pain_flag'),
-    sob_on_exertion_flag: checkVal('sob_on_exertion_flag'), dizziness_flag: checkVal('dizziness_flag'),
-    is_pregnant: checkVal('is_pregnant'),
+    is_pregnant: cb('is_pregnant'),
+    patient_id: document.getElementById('patient_id').value || null,
+    has_hypertension: cb('has_hypertension'), has_hfref: cb('has_hfref'), has_hfpef: cb('has_hfpef'),
+    has_hcm: cb('has_hcm'), has_dcm: cb('has_dcm'), has_cad: cb('has_cad'),
+    has_afib: cb('has_afib'), has_tachycardia: cb('has_tachycardia'), has_bradycardia: cb('has_bradycardia'),
+    on_ace_or_arb: cb('on_ace_or_arb'), on_beta_blocker: cb('on_beta_blocker'),
+    on_loop_diuretic: cb('on_loop_diuretic'), on_nondhp_ccb: cb('on_nondhp_ccb'),
     hours_since_bp_med: parseFloat(document.getElementById('hours_since_bp_med').value) || null,
+    severe_headache_flag: cb('severe_headache_flag'), visual_changes_flag: cb('visual_changes_flag'),
+    altered_mental_flag: cb('altered_mental_flag'), chest_pain_flag: cb('chest_pain_flag'),
+    acute_dyspnea_flag: cb('acute_dyspnea_flag'), focal_neuro_flag: cb('focal_neuro_flag'),
+    severe_epigastric_flag: cb('severe_epigastric_flag'), new_headache_flag: cb('new_headache_flag'),
+    edema_flag: cb('edema_flag'), dizziness_flag: cb('dizziness_flag'),
+    measurement_conditions: {
+      no_caffeine: !!document.getElementById('no_caffeine').checked,
+      no_smoking: !!document.getElementById('no_smoking').checked,
+      no_exercise: !!document.getElementById('no_exercise').checked,
+      bladder_empty: !!document.getElementById('bladder_empty').checked,
+      seated_5min: !!document.getElementById('seated_5min').checked,
+      proper_posture: !!document.getElementById('proper_posture').checked,
+      not_talking: !!document.getElementById('not_talking').checked,
+      cuff_bare_arm: !!document.getElementById('cuff_bare_arm').checked,
+    },
     readings,
   };
 }
-
 async function predict() {
-  const res = await fetch('/api/predict', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(collectPayload()) });
+  const res = await fetch('/api/predict', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(collectPayload()) });
   const data = await res.json();
   if (!res.ok) { alert('Prediction failed: ' + (data.detail || res.status)); return; }
   renderResult(data);
 }
-
+async function saveTarget() {
+  const pid = document.getElementById('patient_id').value;
+  if (!pid) { document.getElementById('target-save-status').textContent = 'Enter a Patient ID first.'; return; }
+  const body = {
+    patient_id: pid,
+    target_sys: parseFloat(document.getElementById('pt_target_sys').value) || null,
+    target_dia: parseFloat(document.getElementById('pt_target_dia').value) || null,
+    lower_sys: parseFloat(document.getElementById('pt_lower_sys').value) || null,
+  };
+  const res = await fetch('/api/physician/target', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  document.getElementById('target-save-status').textContent = res.ok ? ('Saved for ' + data.patient_id) : ('Error: ' + (data.detail || res.status));
+}
 function renderResult(d) {
   document.getElementById('result-empty').style.display = 'none';
   document.getElementById('result').style.display = 'block';
+  const badge = document.getElementById('tier-badge');
+  badge.textContent = d.alert_tier;
+  badge.className = 'tier-badge tier-' + d.alert_tier;
+  document.getElementById('push-bell').style.display = d.push_alert ? 'inline' : 'none';
 
-  const tierBadge = document.getElementById('tier-badge');
-  tierBadge.textContent = d.alert_tier;
-  tierBadge.className = 'badge badge-tier tier-' + d.alert_tier;
+  const ar = d.applied_reading;
+  document.getElementById('applied-reading').textContent =
+    `Applied reading: ${ar.systolic}/${ar.diastolic}` + (ar.pulse ? ` HR ${ar.pulse}` : '') +
+    ` (avg of ${ar.n_averaged} reading${ar.n_averaged === 1 ? '' : 's'})`;
 
-  const persBadge = document.getElementById('personalization-badge');
-  persBadge.textContent = d.personalization_status === 'active' ? 'Personalized' : 'Standard AHA';
-  persBadge.style.background = d.personalization_status === 'active' ? '#d1fae5' : '#fef3c7';
-  persBadge.style.color = '#1e293b';
+  document.getElementById('age-context').textContent =
+    `Age band: ${d.age_band}` + (d.clinical_context_flag ? ` — ${d.clinical_context_flag}` : '');
 
-  const persMsg = document.getElementById('personalization-msg');
-  if (d.personalization_message) { persMsg.textContent = d.personalization_message; persMsg.style.display = 'block'; }
-  else { persMsg.style.display = 'none'; }
-
-  const ppBadge = document.getElementById('pp-badge');
-  if (d.pulse_pressure_flag) { ppBadge.textContent = `PP ${d.pulse_pressure} (high)`; ppBadge.style.display = 'inline'; ppBadge.style.background = '#fee2e2'; ppBadge.style.color = '#991b1b'; }
-  else { ppBadge.style.display = 'none'; }
-
-  function showFlagBadge(id, flag, text, bg, fg) {
-    const el = document.getElementById(id);
-    if (flag) { el.textContent = text; el.style.display = 'inline'; el.style.background = bg; el.style.color = fg; }
-    else { el.style.display = 'none'; }
+  const ciBanner = document.getElementById('contraindications-banner');
+  if (d.contraindication_alerts && d.contraindication_alerts.length) {
+    ciBanner.style.display = 'block';
+    ciBanner.className = 'banner small';
+    ciBanner.innerHTML = '<strong>Contraindication:</strong> ' + d.contraindication_alerts.join(' | ');
+  } else {
+    ciBanner.style.display = 'none';
   }
-  showFlagBadge('ms-badge', d.morning_surge_flag, `Morning surge +${d.morning_surge_delta||0}`, '#fef3c7', '#92400e');
-  showFlagBadge('nd-badge', d.non_dipper_flag, `Non-dipper (${(d.non_dipper_ratio||0).toFixed(2)})`, '#ede9fe', '#5b21b6');
-  showFlagBadge('ort-badge', d.orthostatic_flag, `Orthostatic drop ${d.orthostatic_sys_drop||0}/${d.orthostatic_dia_drop||0}`, '#fce7f3', '#9d174d');
-  showFlagBadge('mt-badge', !!d.med_timing_note, d.med_timing_note||'', '#e0f2fe', '#075985');
 
-  document.getElementById('msg-patient').textContent = d.messages?.patient || '—';
-  document.getElementById('msg-caregiver').textContent = d.messages?.caregiver || '—';
-  document.getElementById('msg-physician').textContent = d.messages?.physician || '—';
+  const mandBanner = document.getElementById('mandatory-banner');
+  if (d.mandatory_provider_config_required) {
+    mandBanner.style.display = 'block';
+    mandBanner.textContent = 'Provider-configured thresholds required for this condition. Using defaults until set.';
+  } else {
+    mandBanner.style.display = 'none';
+  }
 
-  const mlSec = document.getElementById('ml-section');
-  const ml = d.ml_prediction;
-  if (ml) {
-    document.getElementById('ml-model-used').textContent = ml.model_used || '—';
-    const clsBadge = document.getElementById('ml-class-badge');
-    clsBadge.textContent = ml.predicted_class || '—';
-    clsBadge.className = 'badge ms-1 ' + classColor(ml.predicted_class);
-    const pWrap = document.getElementById('ml-probabilities');
-    pWrap.innerHTML = '';
-    if (ml.probabilities) {
-      CLASS_ORDER.forEach(cls => {
-        const p = ml.probabilities[cls] || 0;
-        pWrap.insertAdjacentHTML('beforeend', `<div class="prob-row"><div class="prob-label">${cls}</div><div class="prob-bar ${cls}"><span style="width:${(p*100).toFixed(1)}%"></span></div><div class="prob-value">${(p*100).toFixed(1)}%</div></div>`);
-      });
-    }
-    mlSec.style.display = 'block';
-  } else { mlSec.style.display = 'none'; }
+  const protoNote = document.getElementById('protocol-note');
+  protoNote.textContent = d.measurement_protocol_note || '';
 
-  document.getElementById('details').textContent = JSON.stringify(d, null, 2);
+  const chips = document.getElementById('chips-row');
+  chips.innerHTML = '';
+  const pf = d.pattern_flags || {};
+  if (pf.pulse_pressure_flag) chips.insertAdjacentHTML('beforeend', `<span class="chip red">PP ${pf.pulse_pressure}</span>`);
+  if (pf.morning_surge_flag)  chips.insertAdjacentHTML('beforeend', `<span class="chip yellow">Morning surge +${pf.morning_surge_delta}</span>`);
+  if (pf.non_dipper_flag)     chips.insertAdjacentHTML('beforeend', `<span class="chip purple">Non-dipper ${pf.non_dipper_ratio}</span>`);
+  if (pf.orthostatic_flag)    chips.insertAdjacentHTML('beforeend', `<span class="chip red">Ortho drop ${pf.orthostatic_sys_drop}/${pf.orthostatic_dia_drop}</span>`);
+  if (pf.med_timing_note)     chips.insertAdjacentHTML('beforeend', `<span class="chip sky">${pf.med_timing_note}</span>`);
+  if (d.hr_alert)             chips.insertAdjacentHTML('beforeend', `<span class="chip red">HR: ${d.hr_alert}</span>`);
+  if (d.measurement_quality === 'suboptimal') chips.insertAdjacentHTML('beforeend', `<span class="chip yellow">Suboptimal measurement</span>`);
+
+  document.getElementById('msg-patient').textContent = d.messages.patient;
+  document.getElementById('msg-caregiver').textContent = d.messages.caregiver;
+  document.getElementById('msg-physician').textContent = d.messages.physician;
+
+  const t = d.applied_thresholds;
+  document.getElementById('thresholds-block').textContent =
+    `Source: ${t.source}\nLevel 2: sys >= ${t.level_2_sys} or dia >= ${t.level_2_dia}\n` +
+    `Level 1 High: sys >= ${t.level_1_high_sys} or dia >= ${t.level_1_high_dia}\n` +
+    `Level 1 Low: sys < ${t.low_sys} or dia < ${t.low_dia}` +
+    (t.cad_dia_low ? `\nCAD caution: dia < ${t.cad_dia_low}` : '');
+
+  const ul = document.getElementById('factors-list');
+  ul.innerHTML = '';
+  (d.contributing_factors || []).forEach(f => {
+    const li = document.createElement('li'); li.textContent = f; ul.appendChild(li);
+  });
 }
-
-function classColor(cls) {
-  if (cls === 'Hypertensive') return 'bg-danger';
-  if (cls === 'Hypotensive') return 'bg-warning text-dark';
-  return 'bg-success';
-}
-
-async function train() {
-  const s = document.getElementById('train-status'); s.textContent = 'Running…';
-  const o = document.getElementById('train-output'); o.style.display = 'none';
-  const res = await fetch('/api/train', { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) { s.textContent = 'Failed: ' + (data.detail || res.status); return; }
-  s.textContent = 'Done. Best: ' + data.best_model_name;
-  o.style.display = 'block'; o.textContent = JSON.stringify(data, null, 2);
-  refreshHealth();
-}
-
 async function refreshHealth() {
   try {
-    const data = await (await fetch('/api/health')).json();
-    const b = document.getElementById('health-badge');
-    const ok = data.supervised_loaded && data.unsupervised_loaded;
-    b.className = 'badge ' + (ok ? 'bg-success' : data.supervised_loaded ? 'bg-warning text-dark' : 'bg-danger');
-    b.textContent = `sup=${data.supervised_loaded} unsup=${data.unsupervised_loaded}`;
-  } catch {}
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    const badge = document.getElementById('health-badge');
+    badge.className = 'badge ' + (data.status === 'ok' ? 'bg-success' : 'bg-danger');
+    badge.textContent = data.status;
+  } catch { /* ignore */ }
 }
 
-document.getElementById('weight').addEventListener('input', recalcBmi);
-document.getElementById('height').addEventListener('input', recalcBmi);
-recalcBmi();
-addReading(128, 82, 72); addReading(132, 84, 74); addReading(130, 83, 73);
+// Seed with 3 borderline readings so the averaging has something to work with.
+addReading(128, 82, 72, 'morning', 'sitting');
+addReading(132, 84, 74, 'afternoon', 'sitting');
+addReading(130, 83, 73, 'evening', 'sitting');
 refreshHealth();
 </script>
 </body>

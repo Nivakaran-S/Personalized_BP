@@ -1,27 +1,14 @@
 [project]
 name = "bp"
-version = "0.1.0"
-description = "Personalized blood-pressure alert ML pipeline"
+version = "0.2.0"
+description = "Rule-based personalized blood-pressure alert engine"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",
-    "ipykernel>=7.2.0",
-    "jinja2>=3.1",
-    "joblib>=1.5.3",
-    "matplotlib>=3.10.8",
-    "mlflow>=2.14",
-    "numpy>=1.26",
-    "openpyxl>=3.1.5",
-    "pandas>=2.2",
-    "pydantic>=2.6",
-    "pyreadstat>=1.3.3",
-    "python-dotenv>=1.0",
-    "python-multipart>=0.0.9",
-    "pyyaml>=6.0",
-    "scikit-learn>=1.5",
-    "scipy>=1.11",
-    "seaborn>=0.13.2",
     "uvicorn>=0.27",
-    "xgboost>=2.0",
+    "pydantic>=2.6",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "PyYAML>=6.0",
 ]

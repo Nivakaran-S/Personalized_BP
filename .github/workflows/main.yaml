@@ -2,23 +2,17 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - master
-    paths-ignore:
-      - 'README.md'
+    branches: [main, master]
+    paths-ignore: ['README.md']
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 jobs:
   test:
-    name: Install and smoke-test
+    name: Import + rule-engine smoke test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -32,9 +26,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Import smoke test
-        run: |
-          python -c "from src.pipeline.training_pipeline import TrainingPipeline; from app import app; print('imports ok')"
+        run: python -c "from app import app; from src.alert_engine import evaluate; print('ok')"
 
-      - name: Run pytest if tests exist
+      - name: Rule-engine unit tests
         run: |
-          if [ -d tests ]; then pip install pytest && pytest -q; else echo "No tests directory; skipping."; fi
+          if [ -d tests ]; then pip install pytest && pytest -q; else echo "no tests/ dir"; fi
